@@ -8,8 +8,8 @@ const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
-let lang = new URLSearchParams(location.search).get('lang') || store.get('nodex.lang') || 'es';
-if (!DICT[lang]) lang = 'es';
+let lang = new URLSearchParams(location.search).get('lang') || store.get('nodex.lang') || 'en';
+if (!DICT[lang]) lang = 'en';
 const t = (k, vars = {}) => (DICT[lang][k] ?? DICT.es[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? '');
 const loc = () => (lang === 'es' ? 'es-ES' : 'en-GB');
 
