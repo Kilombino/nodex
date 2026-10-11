@@ -26,7 +26,7 @@ const nf = (n, d = 0) => (n == null || Number.isNaN(n) ? '–' : Number(n).toLoc
 const sats = (n) => `${nf(n)} sats`;
 function cap(n) {
   if (n == null) return '–';
-  if (n >= 1e6) return `${nf(n / 1e8, n >= 1e9 ? 2 : 3)} XBT`;
+  if (n >= 1e6) return `${nf(n / 1e8, n >= 1e9 ? 2 : 3)} BTC`;
   return sats(n);
 }
 const capTitle = (n) => `title="${esc(sats(n))}"`;
@@ -199,7 +199,7 @@ function quant(q, unit = 'ppm') {
 function setNav(name) {
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === name));
 }
-const setTitle = (s) => { document.title = s ? `${s} · Nodex` : 'Nodex · Lightning XBT'; };
+const setTitle = (s) => { document.title = s ? `${s} · Nodex` : 'Nodex · Lightning BTC'; };
 
 function topList(nodes, val) {
   return `<ol class="toplist">${nodes.map((n) => `<li><span class="dot" style="background:${esc(n.color || '#556')}"></span><span class="who">${nodeLink(n.pk)}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim small">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="val">${val(n)}</span></li>`).join('')}</ol>`;
