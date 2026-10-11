@@ -205,3 +205,5 @@ tbody tr:hover { background: #142029; }
 .uprow { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-variant-numeric: tabular-nums; }
 .upstrip { display: grid; grid-template-columns: repeat(30, 1fr); gap: 3px; margin: 12px 0 4px; }
 .upstrip i { display: block; height: 26px; border-radius: 3px; }
+.brand img { display: block; height: 39px; width: auto; border-radius: 8px; }
+.hero-logo { display: block; width: min(520px, 100%); height: auto; border-radius: 16px; margin: 0 0 14px; }

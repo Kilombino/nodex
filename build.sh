@@ -11,6 +11,7 @@ nice -n 10 docker run --rm --cpus 3 --user "$(id -u):$(id -g)" -e HOME=/tmp -e n
     npx -y esbuild@0.24.0 src/app.css --minify --outfile=dist.new/assets/app.css"
 sed "s/__V__/$V/g" web/src/index.html > web/dist.new/index.html
 cp web/src/favicon.svg web/dist.new/favicon.svg
+cp -r web/src/img web/dist.new/img
 printf 'User-agent: *\nAllow: /\n' > web/dist.new/robots.txt
 # Swap contents (keep the dist directory inode: it is bind-mounted into nodex-web)
 mkdir -p web/dist

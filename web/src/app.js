@@ -279,6 +279,7 @@ async function pageHome() {
   const feeVal = (n) => `${nf(n.fee_out.median, 1)} ppm`;
   $app.innerHTML = `
   <section class="hero">
+    <img class="hero-logo" src="/img/logo.webp" alt="Nodex · red lightning" width="768" height="270">
     <h1>${t('hero.title')}</h1>
     <p>${t('hero.sub')}</p>
     <form class="bigsearch" id="bigsearch"><input type="search" name="q" autocomplete="off" spellcheck="false" placeholder="${esc(t('search.ph'))}"><button class="btn">${t('search.go')}</button></form>
