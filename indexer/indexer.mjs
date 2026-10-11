@@ -255,6 +255,15 @@ async function run() {
     }
   }
   if (changes.length) fs.appendFileSync(path.join(DATA_DIR, 'history.jsonl'), changes.map((c) => JSON.stringify(c)).join('\n') + '\n');
+  // Keep the log bounded: past 50 MB, only the newest 200,000 changes stay (about a year at
+  // today's pace; each change is ~600 bytes).
+  try {
+    const hp = path.join(DATA_DIR, 'history.jsonl');
+    if (fs.statSync(hp).size > 50 * 1024 * 1024) {
+      const keep = fs.readFileSync(hp, 'utf8').trim().split('\n').slice(-200000).join('\n') + '\n';
+      fs.writeFileSync(hp + '.tmp', keep); fs.renameSync(hp + '.tmp', hp);
+    }
+  } catch { /* nothing to trim */ }
   writeAtomic('policies.json', cur);
   let tracking = readJson('status.json', {}).history_since || null;
   if (!tracking) tracking = now;

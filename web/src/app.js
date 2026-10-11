@@ -218,6 +218,9 @@ function changeText(c) {
   }
   return parts.join(' · ');
 }
+// A channel side switched off or on and nothing else: what a node does when its peer goes
+// offline and comes back. Real, but noise next to fee changes, so the network-wide feeds skip it.
+const feeChange = (c) => !(c.kind === 'update' && (c.fields || []).every((f) => f === 'disabled'));
 function feedList(changes) {
   if (!changes.length) return `<p class="mute">${t('node.history.none')}</p>`;
   return `<ul class="feed">${changes.map((c) => `<li><time title="${esc(dateStr(c.t, true))}">${esc(ago(c.t))}</time>
@@ -281,7 +284,7 @@ async function pageHome() {
     const el = document.getElementById('homefeed');
     if (!el) return;
     el.className = '';
-    el.innerHTML = feedList(h.changes.filter((c) => c.kind === 'update').slice(0, 8)) + (h.since ? `<p class="small dim">${t('node.history.note', { since: dateStr(h.since) })}</p>` : '');
+    el.innerHTML = feedList(h.changes.filter((c) => c.kind === 'update' && feeChange(c)).slice(0, 8)) + (h.since ? `<p class="small dim">${t('node.history.note', { since: dateStr(h.since) })}</p>` : '');
   });
 }
 
@@ -480,7 +483,7 @@ async function pageActivity() {
   $app.innerHTML = `<h1>${t('act.title')}</h1><p class="mute">${t('act.sub')}</p>
     <p class="note">${t('node.history.note', { since: h.since ? dateStr(h.since, true) : '–' })}</p>
     <div class="grid cols2">
-      <div class="card"><h2>${t('top.changes')}</h2>${feedList(h.changes.slice(0, 150))}</div>
+      <div class="card"><h2>${t('top.changes')}</h2>${feedList(h.changes.filter(feeChange).slice(0, 150))}</div>
       <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
     </div>`;
 }
