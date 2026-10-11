@@ -1,4 +1,4 @@
-# Nodex - Lightning explorer for the XBT (Bitcoin BLAKE2b) network.
+# Nodex - Lightning explorer for the BLAKE2b Bitcoin (BTC) network.
 # Joins the mempool-deploy network (read-only use of mempool-api); nothing of mempool is modified.
 name: nodex
 services:

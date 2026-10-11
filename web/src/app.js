@@ -21,6 +21,7 @@ function applyStatic() {
 }
 
 // ---------- formatting ----------
+const hexColor = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#556');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (n, d = 0) => (n == null || Number.isNaN(n) ? '–' : Number(n).toLocaleString(loc(), { maximumFractionDigits: d, minimumFractionDigits: 0 }));
 const sats = (n) => `${nf(n)} sats`;
@@ -142,9 +143,9 @@ function footStatus() {
 
 // ---------- small components ----------
 const alias = (pk) => idx.node.get(pk)?.alias || short(pk);
-const color = (pk) => idx.node.get(pk)?.color || '#556';
+const color = (pk) => hexColor(idx.node.get(pk)?.color);
 const nodeLink = (pk, label) => `<a href="/node/${esc(pk)}" data-link>${esc(label ?? alias(pk))}</a>`;
-const peerCell = (pk) => `<span class="peer"><span class="dot" style="background:${esc(color(pk))}"></span>${nodeLink(pk)}</span>`;
+const peerCell = (pk) => `<span class="peer"><span class="dot" style="background:${color(pk)}"></span>${nodeLink(pk)}</span>`;
 const opName = (pk) => dir?.[pk]?.name;
 
 function feeCell(p) {
@@ -237,7 +238,7 @@ function setNav(name) {
 const setTitle = (s) => { document.title = s ? `${s} · Nodex` : 'Nodex · Lightning BTC'; };
 
 function topList(nodes, val) {
-  return `<ol class="toplist">${nodes.map((n) => `<li><span class="dot" style="background:${esc(n.color || '#556')}"></span><span class="who">${nodeLink(n.pk)}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim small">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="val">${val(n)}</span></li>`).join('')}</ol>`;
+  return `<ol class="toplist">${nodes.map((n) => `<li><span class="dot" style="background:${hexColor(n.color)}"></span><span class="who">${nodeLink(n.pk)}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim small">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="val">${val(n)}</span></li>`).join('')}</ol>`;
 }
 
 function changeText(c) {
@@ -375,7 +376,7 @@ async function pageNode(pk) {
   const rankB = (k, label) => (n[`rank_${k}`] && n[`rank_${k}`] <= 10 ? `<span class="badge rank">${t('node.rank', { n: n[`rank_${k}`], what: label })}</span>` : '');
   $app.innerHTML = `
   <section class="nodehead">
-    <div class="avatar" style="background:${esc(n.color || '#556')}">${initials(n.alias)}</div>
+    <div class="avatar" style="background:${hexColor(n.color)}">${initials(n.alias)}</div>
     <div class="t">
       <h1>${esc(n.alias)}</h1>
       <div class="pk"><code>${esc(pk)}</code>${copyBtn(pk)}</div>
@@ -500,7 +501,7 @@ async function pageRankings(metric = 'capacity') {
     <div id="rktable"></div>`;
   const cols = [
     { k: 'pos', label: '#', h: (r, i) => `<span class="dim num">${i + 1}</span>` },
-    { k: 'name', label: t('col.node'), v: (r) => r.alias, h: (r) => `<span class="peer"><span class="dot" style="background:${esc(r.color || '#556')}"></span>${nodeLink(r.pk)}</span>${opName(r.pk) && opName(r.pk) !== r.alias ? `<div class="small dim">${esc(opName(r.pk))}</div>` : ''}`, asc: true },
+    { k: 'name', label: t('col.node'), v: (r) => r.alias, h: (r) => `<span class="peer"><span class="dot" style="background:${hexColor(r.color)}"></span>${nodeLink(r.pk)}</span>${opName(r.pk) && opName(r.pk) !== r.alias ? `<div class="small dim">${esc(opName(r.pk))}</div>` : ''}`, asc: true },
     { k: 'cap', label: t('col.capacity'), v: (r) => r.capacity, h: (r) => `<span class="num" ${capTitle(r.capacity)}>${cap(r.capacity)}</span>`, r: true },
     { k: 'ch', label: t('col.channels'), v: (r) => r.channels, h: (r) => `<span class="num">${nf(r.channels)}</span>`, r: true },
     { k: 'peers', label: t('col.peers'), v: (r) => r.peers, h: (r) => `<span class="num">${nf(r.peers)}</span>`, r: true, cls: 'hide-m' },
@@ -580,7 +581,7 @@ function attachSuggest(form) {
   let items = []; let sel = -1;
   const close = () => { box.hidden = true; sel = -1; };
   const draw = () => {
-    box.innerHTML = items.map((n, i) => `<li class="${i === sel ? 'on' : ''}" data-pk="${esc(n.pk)}"><span class="dot" style="background:${esc(n.color || '#556')}"></span><span class="sa">${esc(n.alias || n.pk.slice(0, 16))}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="sv dim small">${cap(n.capacity)}</span></li>`).join('');
+    box.innerHTML = items.map((n, i) => `<li class="${i === sel ? 'on' : ''}" data-pk="${esc(n.pk)}"><span class="dot" style="background:${hexColor(n.color)}"></span><span class="sa">${esc(n.alias || n.pk.slice(0, 16))}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="sv dim small">${cap(n.capacity)}</span></li>`).join('');
     box.hidden = !items.length;
   };
   input.addEventListener('input', async () => {

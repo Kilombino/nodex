@@ -12,6 +12,8 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     for mode, vp in [('desktop', {'width': 1366, 'height': 900}), ('mobile', {'width': 390, 'height': 844})]:
         ctx = b.new_context(viewport=vp, device_scale_factor=1 if mode == 'desktop' else 2, is_mobile=(mode == 'mobile'))
+        # The site defaults to English; the first half of the run checks the Spanish UI.
+        ctx.add_init_script("if (!localStorage.getItem('nodex.lang')) localStorage.setItem('nodex.lang', 'es')")
         pg = ctx.new_page()
         pg.on('console', lambda m: m.type == 'error' and errors.append(m.text))
         pg.on('pageerror', lambda e: errors.append(str(e)))

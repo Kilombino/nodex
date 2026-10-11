@@ -5,6 +5,7 @@
 // recent holds the last 144 probes (24 h), oldest first; days are kept for 90 days.
 import fs from 'node:fs';
 import net from 'node:net';
+import dns from 'node:dns/promises';
 import path from 'node:path';
 
 const DATA_DIR = process.env.DATA_DIR || new URL('../data', import.meta.url).pathname;
@@ -46,11 +47,25 @@ function parse(sock) {
   return m ? { host: m[1], port: Number(m[2]) } : null;
 }
 
+// Anyone can announce any address, so never let a node make us knock on our own LAN:
+// only public unicast IPs are probed directly (hostnames are resolved first), .onion goes via Tor.
+const BLOCKED = new net.BlockList();
+for (const [a, b] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]]) BLOCKED.addSubnet(a, b, 'ipv4');
+for (const [a, b] of [['::', 127], ['64:ff9b::', 96], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]]) BLOCKED.addSubnet(a, b, 'ipv6');
+async function publicIp(host) {
+  let ip = host;
+  if (!net.isIP(host)) { try { ip = (await dns.lookup(host)).address; } catch { return null; } }
+  return BLOCKED.check(ip, net.isIPv6(ip) ? 'ipv6' : 'ipv4') ? null : ip;
+}
+
 async function probe(sockets) {
   for (const s of sockets) {
     const a = parse(s);
-    if (!a) continue;
-    const up = a.host.endsWith('.onion') ? await socks(a.host, a.port, 60000) : await tcp(a.host, a.port, 15000);
+    if (!a || a.port < 1 || a.port > 65535) continue;
+    let up = false;
+    if (a.host.endsWith('.onion')) up = await socks(a.host, a.port, 60000);
+    else { const ip = await publicIp(a.host); if (ip) up = await tcp(ip, a.port, 15000); }
     if (up) return true;
   }
   return false;
