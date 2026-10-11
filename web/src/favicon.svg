@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <symbol id="mark" viewBox="0 0 32 32">
+    <rect x="1" y="1" width="30" height="30" rx="8" fill="#0f1a1c" stroke="#2fd3a5" stroke-width="2"/>
+    <path d="M9 23V9l14 14V9" fill="none" stroke="#2fd3a5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="9" cy="9" r="2.6" fill="#ffb547"/>
+    <circle cx="23" cy="23" r="2.6" fill="#ffb547"/>
+  </symbol>
+  <use href="#mark"/>
+</svg>

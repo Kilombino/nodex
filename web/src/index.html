@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0e13">
+<meta name="referrer" content="no-referrer">
+<title>Nodex · Lightning XBT</title>
+<meta name="description" content="Nodex: explorador de la red Lightning de XBT (Bitcoin BLAKE2b). Nodos, canales, comisiones y operadores.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/app.css?v=__V__">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="/" data-link>
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><use href="/favicon.svg#mark"/></svg>
+      <span>Nodex</span><small>XBT ⚡</small>
+    </a>
+    <nav class="nav">
+      <a href="/" data-link data-nav="home" data-i18n="nav.home">Red</a>
+      <a href="/rankings" data-link data-nav="rankings" data-i18n="nav.rankings">Rankings</a>
+      <a href="/activity" data-link data-nav="activity" data-i18n="nav.activity">Actividad</a>
+    </nav>
+    <form class="topsearch" id="topsearch" role="search">
+      <input type="search" name="q" autocomplete="off" spellcheck="false" data-i18n-ph="search.ph" placeholder="Alias, pubkey o canal">
+    </form>
+    <button class="lang" id="lang" type="button" aria-label="Idioma / Language">EN</button>
+  </div>
+</header>
+<main id="app" class="wrap" aria-live="polite"></main>
+<footer class="foot wrap">
+  <span id="foot-status"></span>
+  <span class="sep">·</span>
+  <span data-i18n="foot.data">Datos: grafo del LND de start10 vía</span> <a href="https://mempool.kilombino.com/lightning" rel="noopener">mempool.kilombino.com</a>
+  <span class="sep">·</span>
+  <span data-i18n="foot.notrack">Sin rastreadores ni recursos externos.</span>
+</footer>
+<script type="module" src="/assets/app.js?v=__V__"></script>
+</body>
+</html>
