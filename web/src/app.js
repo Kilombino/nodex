@@ -234,6 +234,10 @@ async function pageHome() {
   const newest = [...g.nodes].sort((a, b) => (b.first_seen || 0) - (a.first_seen || 0)).slice(0, 8);
   const ops = g.nodes.filter((n) => dir[n.pk]).sort((a, b) => b.capacity - a.capacity).slice(0, 8);
   const newCh = [...g.channels].sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 8);
+  // By the median fee a node charges to route out (ppm), among nodes that route at all.
+  const withFee = nodes.filter((n) => Number.isFinite(n.fee_out?.median));
+  const byFee = (asc) => [...withFee].sort((a, b) => (asc ? 1 : -1) * (a.fee_out.median - b.fee_out.median) || (b.capacity || 0) - (a.capacity || 0)).slice(0, 8);
+  const feeVal = (n) => `${nf(n.fee_out.median, 1)} ppm`;
   $app.innerHTML = `
   <section class="hero">
     <h1>${t('hero.title')}</h1>
@@ -255,6 +259,8 @@ async function pageHome() {
     <div class="card"><h2>${t('top.channels')} <a href="/rankings/channels" data-link>${t('top.all')} →</a></h2>${topList(top('channels'), (n) => `${nf(n.channels)} ${t('u.ch')} · ${nf(n.peers)} ${t('col.peers').toLowerCase()}`)}</div>
     <div class="card"><h2><span title="${esc(t('top.central.help'))}">${t('top.central')} <span class="help">?</span></span> <a href="/rankings/central" data-link>${t('top.all')} →</a></h2>${topList(top('betweenness'), (n) => pct(n.betweenness))}</div>
     <div class="card"><h2>${t('top.newest')} <a href="/rankings/age" data-link>${t('top.all')} →</a></h2>${topList(newest, (n) => `<span title="${esc(dateStr(n.first_seen, true))}">${esc(ago(n.first_seen))}</span>`)}</div>
+    <div class="card"><h2>${t('top.expensive')} <a href="/rankings/expensive" data-link>${t('top.all')} →</a></h2>${topList(byFee(false), feeVal)}</div>
+    <div class="card"><h2>${t('top.cheap')} <a href="/rankings/cheap" data-link>${t('top.all')} →</a></h2>${topList(byFee(true), feeVal)}</div>
   </div>
   <div class="grid cols2 section">
     <div class="card"><h2>${t('chart.title')}</h2><div id="netchart" class="loading">${t('loading')}</div></div>
@@ -432,13 +438,16 @@ async function pageChannel(id) {
 }
 
 const METRICS = {
-  capacity: 'cap', channels: 'ch', central: 'bc', peers: 'peers', cheap: 'out', age: 'first',
+  capacity: 'cap', channels: 'ch', central: 'bc', peers: 'peers', cheap: 'out', expensive: 'out', age: 'first',
 };
+// The fee tabs sort by the median outbound fee; only nodes that charge one are listed there.
+const FEE_TABS = { cheap: true, expensive: false };
 async function pageRankings(metric = 'capacity') {
   setNav('rankings'); setTitle(t('rk.title'));
   const g = await loadGraph(); await loadDir();
   if (!METRICS[metric]) metric = 'capacity';
-  const all = g.nodes.filter((n) => n.channels > 0);
+  let all = g.nodes.filter((n) => n.channels > 0);
+  if (metric in FEE_TABS) all = all.filter((n) => Number.isFinite(n.fee_out?.median));
   $app.innerHTML = `<h1>${t('rk.title')}</h1><p class="mute">${t('rk.sub')}</p>
     <div class="tabs">${Object.keys(METRICS).map((m) => `<a class="tab ${m === metric ? 'on' : ''}" href="/rankings/${m}" data-link>${t(`rk.${m}`)}</a>`).join('')}</div>
     <input type="text" id="rkfilter" placeholder="${esc(t('rk.filter'))}" style="max-width:320px;width:100%;margin-bottom:10px">
@@ -456,7 +465,8 @@ async function pageRankings(metric = 'capacity') {
     { k: 'first', label: t('col.first'), v: (r) => r.first_seen, h: (r) => `<span class="small" title="${esc(dateStr(r.first_seen, true))}">${dateStr(r.first_seen)}</span>`, r: true, asc: true, cls: 'hide-m' },
   ];
   const key = METRICS[metric];
-  const tbl = sortable(document.getElementById('rktable'), cols, all, { key, asc: !!cols.find((c) => c.k === key).asc });
+  const asc = metric in FEE_TABS ? FEE_TABS[metric] : !!cols.find((c) => c.k === key).asc;
+  const tbl = sortable(document.getElementById('rktable'), cols, all, { key, asc });
   document.getElementById('rkfilter').addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
     tbl.set(q ? all.filter((n) => n.alias.toLowerCase().includes(q) || n.pk.startsWith(q) || (opName(n.pk) || '').toLowerCase().includes(q)) : all);
@@ -500,8 +510,54 @@ async function pageSearch(q) {
     ${chans.length ? `<div class="card section"><h2>${t('sr.channels')} (${chans.length})</h2><ul class="feed">${chans.map((c) => `<li><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a>${c.n1 ? `<span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span>` : ''}<span class="val small">${cap(c.capacity)}</span></li>`).join('')}</ul></div>` : ''}`;
 }
 
+// ---------- suggestions as you type ----------
+function suggestNodes(q) {
+  q = q.trim().toLowerCase();
+  if (!q || !graph) return [];
+  const out = [];
+  for (const n of graph.nodes) {
+    const alias = (n.alias || '').toLowerCase(); const op = (opName(n.pk) || '').toLowerCase();
+    let score = -1;
+    if (alias.startsWith(q) || op.startsWith(q)) score = 3;
+    else if (alias.split(/[\s_.-]+/).some((w) => w.startsWith(q))) score = 2;
+    else if (alias.includes(q) || op.includes(q)) score = 1;
+    else if (n.pk.startsWith(q)) score = 1;
+    // One letter: only names starting with it (or a word in them); from two on, anywhere.
+    if (score >= 0 && (q.length > 1 || score >= 2)) out.push([score, n]);
+  }
+  return out.sort((a, b) => b[0] - a[0] || (b[1].capacity || 0) - (a[1].capacity || 0)).slice(0, 8).map((x) => x[1]);
+}
+function attachSuggest(form) {
+  const input = form?.querySelector('input'); if (!input) return;
+  form.style.position = 'relative';
+  const box = document.createElement('ul'); box.className = 'suggest'; box.hidden = true; form.appendChild(box);
+  let items = []; let sel = -1;
+  const close = () => { box.hidden = true; sel = -1; };
+  const draw = () => {
+    box.innerHTML = items.map((n, i) => `<li class="${i === sel ? 'on' : ''}" data-pk="${esc(n.pk)}"><span class="dot" style="background:${esc(n.color || '#556')}"></span><span class="sa">${esc(n.alias || n.pk.slice(0, 16))}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="sv dim small">${cap(n.capacity)}</span></li>`).join('');
+    box.hidden = !items.length;
+  };
+  input.addEventListener('input', async () => {
+    if (!graph) { try { await loadGraph(); } catch { return; } }
+    items = suggestNodes(input.value); sel = -1; draw();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (box.hidden) return;
+    if (e.key === 'ArrowDown') { sel = Math.min(items.length - 1, sel + 1); draw(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(-1, sel - 1); draw(); e.preventDefault(); }
+    else if (e.key === 'Enter' && sel >= 0) { e.preventDefault(); const pk = items[sel].pk; close(); input.value = ''; input.blur(); go(`/node/${pk}`); }
+    else if (e.key === 'Escape') close();
+  });
+  box.addEventListener('mousedown', (e) => {
+    const li = e.target.closest('li'); if (!li) return;
+    e.preventDefault(); close(); input.value = ''; input.blur(); go(`/node/${li.dataset.pk}`);
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+}
+
 // ---------- router ----------
 function bindSearch(form) {
+  attachSuggest(form);
   form?.addEventListener('submit', (e) => {
     e.preventDefault();
     const q = new FormData(form).get('q')?.toString().trim();

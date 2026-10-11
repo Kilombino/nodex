@@ -192,3 +192,12 @@ tbody tr:hover { background: #142029; }
 }
 
 .help { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--dim); color: var(--mute); font-size: 10px; font-weight: 700; cursor: help; vertical-align: 1px; }
+
+/* search suggestions */
+.suggest { position: absolute; top: 100%; left: 0; right: 0; z-index: 50; margin: 4px 0 0; padding: 4px 0; list-style: none;
+  background: var(--panel, #12161d); border: 1px solid var(--line, #263040); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45); max-height: 60vh; overflow: auto; text-align: left; }
+.suggest li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; }
+.suggest li.on, .suggest li:hover { background: rgba(255,255,255,.06); }
+.suggest .sa { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.topsearch .suggest { left: auto; width: min(420px, 92vw); }
