@@ -201,3 +201,7 @@ tbody tr:hover { background: #142029; }
 .suggest .sa { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .suggest .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .topsearch .suggest { left: auto; width: min(420px, 92vw); }
+.badge.off { color: var(--bad); border-color: #5a2a2a; }
+.uprow { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-variant-numeric: tabular-nums; }
+.upstrip { display: grid; grid-template-columns: repeat(30, 1fr); gap: 3px; margin: 12px 0 4px; }
+.upstrip i { display: block; height: 26px; border-radius: 3px; }

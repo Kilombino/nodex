@@ -95,7 +95,42 @@ async function loadHist() {
   hist._at = Date.now();
   return hist;
 }
+let uptime = null;
+async function loadUptime() {
+  if (uptime && Date.now() - uptime._at < 120000) return uptime;
+  try { uptime = await getJSON('/data/uptime.json'); } catch { uptime = { nodes: {} }; }
+  uptime._at = Date.now();
+  return uptime;
+}
 const api = (p) => getJSON(`/api/v1/lightning${p}`);
+
+// Uptime card: share of probes (every 10 min) in which the node accepted a connection.
+function uptimeCard(u, n) {
+  const e = u.nodes?.[n.pk];
+  if (!n.sockets?.length) return `<p class="mute">${t('up.noaddr')}</p>`;
+  if (!e) return `<p class="mute">${t('up.none')}</p>`;
+  const days = Object.keys(e.days).sort();
+  const share = (list) => { let a = 0, b = 0; for (const [x, y] of list) { a += x; b += y; } return b ? a / b : null; };
+  const lastN = (k) => days.slice(-k).map((d) => e.days[d]);
+  const r24 = e.recent ? [...e.recent].filter((c) => c === '1').length / e.recent.length : null;
+  const fmt = (v) => (v == null ? '–' : `${nf(v * 100, v === 1 || v === 0 ? 0 : 1)} %`);
+  const col = (v) => (v == null ? 'var(--line)' : v >= 0.99 ? 'var(--acc)' : v >= 0.9 ? 'var(--acc2)' : 'var(--bad)');
+  const strip = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    const v = e.days[d] ? e.days[d][0] / e.days[d][1] : null;
+    strip.push(`<i style="background:${col(v)}" title="${esc(d)}: ${esc(fmt(v))}"></i>`);
+  }
+  const nowUp = e.recent?.endsWith('1');
+  return `<div class="uprow">
+      <span class="badge ${nowUp ? 'ok' : 'off'}">${nowUp ? t('up.online') : t('up.offline')}</span>
+      <span><b>${fmt(r24)}</b> <span class="dim">24 h</span></span>
+      <span><b>${fmt(share(lastN(7)))}</b> <span class="dim">7 ${t('up.days')}${days.length < 7 ? ` (${t('up.measured', { n: days.length })})` : ''}</span></span>
+      <span><b>${fmt(share(lastN(30)))}</b> <span class="dim">30 ${t('up.days')}${days.length < 30 ? ` (${t('up.measured', { n: days.length })})` : ''}</span></span>
+    </div>
+    <div class="upstrip">${strip.join('')}</div>
+    <p class="note">${t('up.note', { since: dateStr(u.since, true), last: e.last_up ? ago(e.last_up) : '–' })}</p>`;
+}
 
 function footStatus() {
   const el = document.getElementById('foot-status');
@@ -359,6 +394,7 @@ async function pageNode(pk) {
     <div class="stat"><div class="k">${t('node.peers')}</div><div class="v">${nf(n.peers)}</div><div class="s">${n.channels ? `${t('st.avgch', { v: cap(n.capacity / n.channels) })}` : ''}</div></div>
     <div class="stat"><div class="k" title="${esc(t('top.central.help'))}">${t('node.central')} <span class="help">?</span></div><div class="v">${pct(n.betweenness)}</div><div class="s">${n.rank_betweenness ? `#${n.rank_betweenness} / ${g.network.nodes}` : ''}</div></div>
   </div>
+  <section class="section card"><h2>${t('up.title')}</h2><div id="nodeup" class="loading">${t('loading')}</div></section>
   <div class="grid cols2">
     <div class="card">
       <dl class="kv">
@@ -389,6 +425,13 @@ async function pageNode(pk) {
     { k: 'cltv', label: t('col.cltv'), v: (r) => r.out?.cltv, h: (r) => `<span class="num">${r.out?.cltv ?? '–'} / ${r.inn?.cltv ?? '–'}</span>`, r: true, cls: 'hide-m' },
     { k: 'fund', label: t('col.funding'), v: (r) => blockOf(r.c.short_id), h: (r) => `<a class="mono small" href="/channel/${esc(r.c.id)}" data-link>${esc(r.c.short_id)}</a> <a class="small" href="${MEMPOOL}/tx/${esc(r.c.txid)}:${esc(r.c.vout)}" rel="noopener" title="${esc(t('ch.funding'))}">tx ↗</a>`, cls: 'hide-m nowrap' },
   ], chans, { key: 'cap' });
+
+  loadUptime().then((u) => {
+    const el = document.getElementById('nodeup');
+    if (!el) return;
+    el.className = '';
+    el.innerHTML = uptimeCard(u, n);
+  });
 
   api(`/nodes/${pk}/statistics`).then((s) => {
     const el = document.getElementById('nodechart');
