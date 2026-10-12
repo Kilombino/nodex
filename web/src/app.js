@@ -279,10 +279,8 @@ async function pageHome() {
   const feeVal = (n) => `${nf(n.fee_out.median, 1)} ppm`;
   $app.innerHTML = `
   <section class="hero">
-    <img class="hero-logo" src="/img/logo.webp" alt="Nodex · red lightning" width="768" height="270">
     <h1>${t('hero.title')}</h1>
     <p>${t('hero.sub')}</p>
-    <form class="bigsearch" id="bigsearch"><input type="search" name="q" autocomplete="off" spellcheck="false" placeholder="${esc(t('search.ph'))}"><button class="btn">${t('search.go')}</button></form>
   </section>
   <div class="grid stats">
     <div class="stat"><div class="k">${t('st.nodes')}</div><div class="v">${nf(N.nodes)}</div><div class="s">${t('st.nodes.s', { n: N.no_address })}</div></div>
@@ -311,7 +309,6 @@ async function pageHome() {
       <ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="val small" ${capTitle(c.capacity)}>${cap(c.capacity)}</span></li>`).join('')}</ul></div>
     <div class="card"><h2>${t('top.changes')} <a href="/activity" data-link>${t('nav.activity')} →</a></h2><div id="homefeed" class="loading">${t('loading')}</div></div>
   </div>`;
-  bindSearch(document.getElementById('bigsearch'));
   api('/statistics/all').then((s) => {
     const pts = s.map((r) => ({ x: r.added, a: r.total_capacity, b: r.channel_count })).sort((a, b) => a.x - b.x);
     const el = document.getElementById('netchart');
