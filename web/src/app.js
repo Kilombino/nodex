@@ -257,12 +257,29 @@ function changeText(c) {
 // A channel side switched off or on and nothing else: what a node does when its peer goes
 // offline and comes back. Real, but noise next to fee changes, so the network-wide feeds skip it.
 const feeChange = (c) => !(c.kind === 'update' && (c.fields || []).every((f) => f === 'disabled'));
+// What kind of change it is, for the tag at the start of the line.
+function changeKind(c) {
+  if (c.kind === 'new') return ['set', t('act.set')];
+  if (c.kind === 'gone') return ['off', t('act.off')];
+  const f = c.fields || [];
+  if (f.includes('ppm') && typeof c.old.ppm === 'number' && typeof c.new.ppm === 'number' && c.old.ppm !== c.new.ppm)
+    return c.new.ppm > c.old.ppm ? ['up', t('act.up')] : ['down', t('act.down')];
+  if (f.includes('base') && typeof c.old.base === 'number' && typeof c.new.base === 'number' && c.old.base !== c.new.base)
+    return c.new.base > c.old.base ? ['up', t('act.up')] : ['down', t('act.down')];
+  if (f.length === 1 && f[0] === 'disabled') return c.new.disabled ? ['off', t('act.off')] : ['on', t('act.on')];
+  return ['chg', t('act.chg')];
+}
+// Each line says who: the node that sets the fee (the one it charges for forwarding out of
+// that channel), towards which peer, then what changed.
 function feedList(changes) {
   if (!changes.length) return `<p class="mute">${t('node.history.none')}</p>`;
-  return `<ul class="feed">${changes.map((c) => `<li><time title="${esc(dateStr(c.t, true))}">${esc(ago(c.t))}</time>
-    <span>${nodeLink(c.from)} → ${nodeLink(c.to)}</span>
-    <span class="small"><a href="/channel/${esc(c.ch)}" data-link class="mono">${esc(c.short_id || c.ch)}</a></span>
-    <span>${changeText(c)}</span></li>`).join('')}</ul>`;
+  return `<ul class="feed feed-fee">${changes.map((c) => {
+    const [k, label] = changeKind(c);
+    const who = t(c.kind === 'new' ? 'act.who.new' : c.kind === 'gone' ? 'act.who.gone' : 'act.who',
+      { a: `<b class="setter">${nodeLink(c.from)}</b>`, b: nodeLink(c.to) });
+    return `<li><div class="fl1"><span class="ktag k-${k}">${esc(label)}</span><span class="who">${who}</span><time title="${esc(dateStr(c.t, true))}">${esc(ago(c.t))}</time></div>
+    <div class="fl2"><span>${changeText(c)}</span><a href="/channel/${esc(c.ch)}" data-link class="mono small">${esc(c.short_id || c.ch)}</a></div></li>`;
+  }).join('')}</ul>`;
 }
 
 async function pageHome() {

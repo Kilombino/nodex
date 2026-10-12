@@ -339,3 +339,18 @@ th.sort.on { color: var(--acc2); }
 .toplist li:hover .who a { color: #fff; text-shadow: 0 0 10px var(--glow); }
 @media (prefers-reduced-motion: reduce) { .top::after { animation: none; } }
 @media (max-width: 760px) { .top-in { padding: 8px 16px; } }
+
+/* activity: who changes the fee */
+.feed-fee li { display: block; padding: 10px 0; }
+.feed-fee .fl1 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.feed-fee .fl1 .who { flex: 1; min-width: 0; color: var(--mute); }
+.feed-fee .fl1 time { margin-left: auto; min-width: 0; text-align: right; }
+.feed-fee .setter a { color: #fff; font-weight: 700; text-shadow: 0 0 10px var(--glow); }
+.feed-fee .fl2 { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-top: 4px; padding-left: 2px; }
+.feed-fee .fl2 a.mono { color: var(--dim); margin-left: auto; }
+.ktag { flex: none; font: 700 .68rem var(--head); text-transform: uppercase; letter-spacing: .1em; padding: 2px 7px; border: 1px solid; border-radius: 2px; }
+.ktag.k-up { color: var(--bad); border-color: rgba(255, 93, 108, .5); box-shadow: 0 0 8px rgba(255, 93, 108, .25); }
+.ktag.k-down { color: var(--acc); border-color: rgba(42, 216, 255, .5); box-shadow: 0 0 8px rgba(42, 216, 255, .25); }
+.ktag.k-set { color: var(--acc2); border-color: rgba(255, 180, 58, .5); }
+.ktag.k-off { color: var(--dim); border-color: var(--line); }
+.ktag.k-on, .ktag.k-chg { color: var(--link); border-color: var(--line); }
