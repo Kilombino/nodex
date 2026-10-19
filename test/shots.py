@@ -58,6 +58,18 @@ with sync_playwright() as p:
         sw = pg.evaluate('document.documentElement.scrollWidth'); check(sw <= vp['width'] + 1, f'{mode} node no horizontal scroll ({sw})')
         shot('node-en')
         pg.goto(BASE + '/activity'); pg.wait_for_timeout(1200); shot('activity-en')
+        # Splices: a spliced channel shows its history, and the old id says where it went.
+        sl = json.loads(pg.evaluate("fetch('/data/graph.json').then(r => r.text())")).get('splice_log', [])
+        if sl:
+            check('recent splices' in pg.inner_text('main').lower(), f'{mode} activity lists splices')
+            pg.goto(BASE + '/channel/' + sl[0]['live']); pg.wait_for_timeout(1200)
+            txt = pg.inner_text('main')
+            check('splice history' in txt.lower() and sl[0]['from']['short_id'] in txt, f'{mode} channel page splice history')
+            sw = pg.evaluate('document.documentElement.scrollWidth'); check(sw <= vp['width'] + 1, f'{mode} channel no horizontal scroll ({sw})')
+            shot('channel-splice-en')
+            pg.goto(BASE + '/channel/' + sl[0]['from']['id']); pg.wait_for_timeout(1500)
+            check('stays open as' in pg.inner_text('main'), f'{mode} old channel points to the spliced one')
+            shot('channel-old-en')
         pg.click('#lang'); pg.wait_for_timeout(500)
         ctx.close()
     b.close()

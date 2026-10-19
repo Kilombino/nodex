@@ -61,10 +61,21 @@ function age(ts) {
 }
 const short = (pk) => `${pk.slice(0, 10)}…${pk.slice(-6)}`;
 const blockOf = (sid) => (sid ? Number(String(sid).split('x')[0]) : null);
+// Splices: a spliced channel gets a new funding output and short id, and the graph shows it as
+// one channel closing and another opening. The indexer links them; these read that link.
+const lastSplice = (c) => c?.splices?.[c.splices.length - 1];
+const opened = (c) => c?.first_open || c?.created;
+const signedCap = (d) => `${d >= 0 ? '+' : '−'}${cap(Math.abs(d))}`;
+function spliceTag(c) {
+  const p = lastSplice(c);
+  if (!p) return '';
+  const d = c.capacity - p.capacity;
+  return `<span class="ktag k-splice" title="${esc(t('sp.tag.title', { n: c.splices.length, a: cap(p.capacity), b: cap(c.capacity) }))}">${esc(t(d >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(d))}</span>`;
+}
 
 // ---------- data ----------
 let graph = null; let graphAt = 0; let dir = null; let hist = null;
-const idx = { node: new Map(), ch: new Map(), chBySid: new Map(), chOf: new Map() };
+const idx = { node: new Map(), ch: new Map(), chBySid: new Map(), chOf: new Map(), spliceNext: {} };
 
 async function getJSON(url) {
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -82,6 +93,7 @@ async function loadGraph(force = false) {
     idx.ch.set(c.id, c); idx.chBySid.set(c.short_id, c);
     idx.chOf.get(c.n1)?.push(c); idx.chOf.get(c.n2)?.push(c);
   }
+  idx.spliceNext = g.splice_next || {};
   footStatus();
   return g;
 }
@@ -241,7 +253,14 @@ function topList(nodes, val) {
   return `<ol class="toplist">${nodes.map((n) => `<li><span class="dot" style="background:${hexColor(n.color)}"></span><span class="who">${nodeLink(n.pk)}${opName(n.pk) && opName(n.pk) !== n.alias ? ` <span class="dim small">· ${esc(opName(n.pk))}</span>` : ''}</span><span class="val">${val(n)}</span></li>`).join('')}</ol>`;
 }
 
+// The policy of a channel that was spliced moves to the new short id: the feed would read it as
+// the old channel closing and a new one opening.
+const splicedAway = (c) => c.kind === 'gone' && idx.spliceNext[c.ch];
+const splicedIn = (c) => c.kind === 'new' && (idx.ch.get(String(c.ch))?.splices || []).length > 0;
 function changeText(c) {
+  const nx = splicedAway(c);
+  if (nx) return `<span class="mute">${t('sp.moved')}</span> <a class="mono small" href="/channel/${esc(nx.id)}" data-link>${esc(nx.short_id)}</a>`;
+  if (splicedIn(c)) return `<span class="mute">${t('sp.after')}</span> ${feeCell(c.new)}`;
   if (c.kind === 'new') return `<span class="mute">${t('act.new')}</span> ${feeCell(c.new)}`;
   if (c.kind === 'gone') return `<span class="mute">${t('act.gone')}</span>`;
   const parts = [];
@@ -259,6 +278,7 @@ function changeText(c) {
 const feeChange = (c) => !(c.kind === 'update' && (c.fields || []).every((f) => f === 'disabled'));
 // What kind of change it is, for the tag at the start of the line.
 function changeKind(c) {
+  if (splicedAway(c) || splicedIn(c)) return ['splice', t('sp.kind')];
   if (c.kind === 'new') return ['set', t('act.set')];
   if (c.kind === 'gone') return ['off', t('act.off')];
   const f = c.fields || [];
@@ -275,10 +295,10 @@ function feedList(changes) {
   if (!changes.length) return `<p class="mute">${t('node.history.none')}</p>`;
   return `<ul class="feed feed-fee">${changes.map((c) => {
     const [k, label] = changeKind(c);
-    const who = t(c.kind === 'new' ? 'act.who.new' : c.kind === 'gone' ? 'act.who.gone' : 'act.who',
+    const who = t(splicedAway(c) || splicedIn(c) ? 'sp.who' : c.kind === 'new' ? 'act.who.new' : c.kind === 'gone' ? 'act.who.gone' : 'act.who',
       { a: `<b class="setter">${nodeLink(c.from)}</b>`, b: nodeLink(c.to) });
     return `<li><div class="fl1"><span class="ktag k-${k}">${esc(label)}</span><span class="who">${who}</span><time title="${esc(dateStr(c.t, true))}">${esc(ago(c.t))}</time></div>
-    <div class="fl2"><span>${changeText(c)}</span><a href="/channel/${esc(c.ch)}" data-link class="mono small">${esc(c.short_id || c.ch)}</a></div></li>`;
+    <div class="fl2"><span>${changeText(c)}</span><a href="/channel/${esc(c.ch)}" data-link class="mono small">${esc(c.short_id || idx.spliceNext[c.ch]?.old_short_id || c.ch)}</a></div></li>`;
   }).join('')}</ul>`;
 }
 
@@ -323,7 +343,7 @@ async function pageHome() {
   </div>
   <div class="grid cols2 section">
     <div class="card"><h2>${t('top.newch')} <a href="/activity" data-link>${t('nav.activity')} →</a></h2>
-      <ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="val small" ${capTitle(c.capacity)}>${cap(c.capacity)}</span></li>`).join('')}</ul></div>
+      <ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)} ${spliceTag(c)}</span><span class="val small" ${capTitle(c.capacity)}>${cap(c.capacity)}</span></li>`).join('')}</ul></div>
     <div class="card"><h2>${t('top.changes')} <a href="/activity" data-link>${t('nav.activity')} →</a></h2><div id="homefeed" class="loading">${t('loading')}</div></div>
   </div>`;
   api('/statistics/all').then((s) => {
@@ -398,6 +418,7 @@ async function pageNode(pk) {
       <div class="badges">
         ${n.tor ? `<span class="badge tor">${t('tor')}</span>` : ''}${n.clearnet ? `<span class="badge net">${t('clearnet')}</span>` : ''}
         ${dir[pk] ? `<span class="badge ok">✓ ${t('node.op')}</span>` : ''}
+        ${n.splices ? `<span class="badge splice" title="${esc(t('sp.node.title'))}">${esc(t('sp.node', { n: n.splices }))}</span>` : ''}
         ${rankB('capacity', t('rk.capacity').toLowerCase())}${rankB('channels', t('rk.channels').toLowerCase())}${rankB('betweenness', t('rk.central').toLowerCase())}
       </div>
     </div>
@@ -434,8 +455,8 @@ async function pageNode(pk) {
 
   sortable(document.getElementById('chtable'), [
     { k: 'peer', label: t('col.peer'), v: (r) => alias(r.peer), h: (r) => peerCell(r.peer) + (opName(r.peer) && opName(r.peer) !== alias(r.peer) ? `<div class="small dim">${esc(opName(r.peer))}</div>` : ''), asc: true },
-    { k: 'cap', label: t('col.capacity'), v: (r) => r.c.capacity, h: (r) => `<span class="num" ${capTitle(r.c.capacity)}>${cap(r.c.capacity)}</span>`, r: true },
-    { k: 'age', label: t('col.age'), v: (r) => -(blockOf(r.c.short_id) || 0), h: (r) => `<span title="${esc(dateStr(r.c.created, true))}">${age(r.c.created)}</span>`, r: true },
+    { k: 'cap', label: t('col.capacity'), v: (r) => r.c.capacity, h: (r) => `<span class="num" ${capTitle(r.c.capacity)}>${cap(r.c.capacity)}</span>${r.c.splices ? `<div>${spliceTag(r.c)}</div>` : ''}`, r: true },
+    { k: 'age', label: t('col.age'), v: (r) => -(blockOf(r.c.splices?.[0]?.short_id || r.c.short_id) || 0), h: (r) => `<span title="${esc(dateStr(opened(r.c), true))}">${age(opened(r.c))}</span>`, r: true },
     { k: 'out', label: t('col.out'), title: t('node.feesout.s'), v: (r) => r.out?.ppm, h: (r) => feeCell(r.out), r: true },
     { k: 'in', label: t('col.in'), title: t('node.feesin.s'), v: (r) => r.inn?.ppm, h: (r) => feeCell(r.inn), r: true },
     { k: 'cltv', label: t('col.cltv'), v: (r) => r.out?.cltv, h: (r) => `<span class="num">${r.out?.cltv ?? '–'} / ${r.inn?.cltv ?? '–'}</span>`, r: true, cls: 'hide-m' },
@@ -474,7 +495,7 @@ async function pageChannel(id) {
   if (!c) {
     try {
       raw = await api(`/channels/${encodeURIComponent(id)}`);
-      c = { id: raw.id, short_id: raw.short_id, capacity: raw.capacity, txid: raw.transaction_id, vout: raw.transaction_vout, created: Date.parse(raw.created) / 1000, status: raw.status, n1: raw.node_left?.public_key, n2: raw.node_right?.public_key, closed: raw.closing_date };
+      c = { id: raw.id, short_id: raw.short_id, capacity: raw.capacity, txid: raw.transaction_id, vout: raw.transaction_vout, created: Date.parse(raw.created) / 1000, status: raw.status, n1: raw.node_left?.public_key, n2: raw.node_right?.public_key, closed: raw.closing_date || raw.status === 2 };
     } catch { $app.innerHTML = `<p class="err">${t('ch.notfound')}</p>`; return; }
   }
   setTitle(c.short_id);
@@ -486,17 +507,21 @@ async function pageChannel(id) {
       <dt>${t('ch.updated')}</dt><dd>${dateStr(p.updated, true)} <span class="dim">(${esc(ago(p.updated))})</span></dd></dl>` : '<p class="mute">–</p>'}</div>`;
   $app.innerHTML = `<h1>${t('ch.title', { id: `<span class="mono">${esc(c.short_id)}</span>` })}</h1>
     <p>${peerCell(c.n1)} ⇄ ${peerCell(c.n2)}</p>
-    ${c.closed ? `<p class="note">${t('act.gone')}</p>` : ''}
+    ${idx.spliceNext[c.id] ? `<p class="note">${t('sp.closed', { link: `<a class="mono" href="/channel/${esc(idx.spliceNext[c.id].id)}" data-link>${esc(idx.spliceNext[c.id].short_id)}</a>` })}</p>` : c.closed ? `<p class="note">${t('act.gone')}</p>` : ''}
     <div class="grid stats">
       <div class="stat"><div class="k">${t('ch.capacity')}</div><div class="v" ${capTitle(c.capacity)}>${cap(c.capacity)}</div><div class="s">${esc(sats(c.capacity))}</div></div>
-      <div class="stat"><div class="k">${t('ch.block')}</div><div class="v"><a href="${MEMPOOL}/block/${blockOf(c.short_id)}" rel="noopener">${nf(blockOf(c.short_id))}</a></div><div class="s">${t('ch.opened')} ${esc(ago(c.created))}</div></div>
+      <div class="stat"><div class="k">${t('ch.block')}</div><div class="v"><a href="${MEMPOOL}/block/${blockOf(c.short_id)}" rel="noopener">${nf(blockOf(c.short_id))}</a></div><div class="s">${t(c.splices ? 'sp.last' : 'ch.opened')} ${esc(ago(c.created))}</div></div>
+      ${c.splices ? `<div class="stat"><div class="k">${t('sp.since')}</div><div class="v small">${esc(dateStr(opened(c)))}</div><div class="s">${esc(age(opened(c)))} · ${esc(t('sp.count', { n: c.splices.length }))}</div></div>` : ''}
     </div>
+    ${c.splices ? `<section class="section card"><h2>${t('sp.history')}</h2><div class="small mute">${t('sp.history.s')}</div>
+      <ul class="feed">${[...c.splices, c].map((x, i, all) => `<li><time title="${esc(dateStr(x.created, true))}">${esc(dateStr(x.created))}</time><span>${i ? `<span class="ktag k-splice">${esc(t(x.capacity >= all[i - 1].capacity ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.capacity - all[i - 1].capacity))}</span>` : `<span class="ktag k-set">${esc(t('sp.open'))}</span>`} <a class="mono small" href="/channel/${esc(x.id)}" data-link>${esc(x.short_id)}</a></span><span class="val small" ${capTitle(x.capacity)}>${cap(x.capacity)}</span></li>`).reverse().join('')}</ul></section>` : ''}
     <p>${t('ch.funding')}: <a class="mono small" style="word-break:break-all" href="${MEMPOOL}/tx/${esc(c.txid)}:${esc(c.vout)}" rel="noopener">${esc(c.txid)}:${esc(c.vout)}</a></p>
     <div class="grid cols2">${pol(c.p1, c.n1, c.n2)}${pol(c.p2, c.n2, c.n1)}</div>
     <section class="section card"><h2>${t('node.history')}</h2><div id="chhist"></div></section>`;
   const h = await loadHist();
   const el = document.getElementById('chhist');
-  if (el) el.innerHTML = feedList(h.changes.filter((x) => x.ch === String(c.id)));
+  const ids = new Set([String(c.id), ...(c.splices || []).map((x) => String(x.id))]);
+  if (el) el.innerHTML = feedList(h.changes.filter((x) => ids.has(String(x.ch))));
 }
 
 const METRICS = {
@@ -543,7 +568,8 @@ async function pageActivity() {
     <p class="note">${t('node.history.note', { since: h.since ? dateStr(h.since, true) : '–' })}</p>
     <div class="grid cols2">
       <div class="card"><h2>${t('top.changes')}</h2>${feedList(h.changes.filter(feeChange).slice(0, 150))}</div>
-      <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
+      ${g.splice_log?.length ? `<div class="card"><h2>${t('sp.recent')}</h2><ul class="feed">${g.splice_log.slice(0, 40).map((x) => `<li><time title="${esc(dateStr(x.t, true))}">${esc(ago(x.t))}</time><span>${nodeLink(x.n1)} ⇄ ${nodeLink(x.n2)} <span class="ktag k-splice">${esc(t(x.delta >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.delta))}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.live)}" data-link>${esc(x.to.short_id)}</a> · ${cap(x.from.capacity)} → <span ${capTitle(x.to.capacity)}>${cap(x.to.capacity)}</span></span></li>`).join('')}</ul></div>` : ''}
+      <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)} ${spliceTag(c)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
     </div>`;
 }
 

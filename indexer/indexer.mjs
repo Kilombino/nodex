@@ -8,6 +8,13 @@
 //   history.jsonl       append-only log of every policy change seen since the indexer started
 //   policies.json       last known policy per channel direction (internal state)
 //   status.json         when the last run started/finished and how it went
+//   closed.json         closed channels seen so far and what spent their funding output
+//                       (internal cache: a closed channel never changes, so it is looked up once)
+//
+// Splices: the mempool backend reports a spliced channel as a closed one plus a new one. When
+// the transaction that spends a closed channel's funding output is itself the funding of
+// another channel between the same two nodes, it was a splice: graph.json links the two
+// (`splices` on the surviving channel, `splice_next` for the old ids, `splice_log`).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,14 +23,16 @@ const API = (process.env.API_BASE || 'http://mempool-api:8999/api/v1/lightning')
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const INTERVAL = Number(process.env.INTERVAL_SECONDS || 600) * 1000;
 const CONCURRENCY = Number(process.env.CONCURRENCY || 3);
+// The transaction endpoints live next to the lightning ones (…/api/v1/tx/…).
+const TX_API = API.replace(/\/lightning$/, '');
 const HISTORY_KEEP = Number(process.env.HISTORY_KEEP || 5000);
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
-async function get(p, tries = 3) {
+async function get(p, tries = 3, base = API) {
   for (let i = 1; ; i++) {
     try {
-      const r = await fetch(API + p, { signal: AbortSignal.timeout(20000) });
+      const r = await fetch(base + p, { signal: AbortSignal.timeout(20000) });
       if (!r.ok) throw new Error(`HTTP ${r.status} ${p}`);
       return { json: await r.json(), headers: r.headers };
     } catch (e) {
@@ -208,6 +217,57 @@ async function run() {
   const rank = (key) => Object.values(nodes).sort((a, b) => (b[key] || 0) - (a[key] || 0)).forEach((n, i) => { n[`rank_${key}`] = i + 1; });
   ['capacity', 'channels', 'betweenness', 'peers'].forEach(rank);
 
+  // 4b. Splices. Closed channels of every known node, each looked up once and cached with
+  // the transaction that spent its funding output.
+  const closedCache = readJson('closed.json', {});
+  const closedIds = new Set();
+  await pool(Object.keys(nodes), async (pk) => {
+    let index = 0; let total = Infinity;
+    while (index < total) {
+      const { json, headers } = await get(`/channels?public_key=${pk}&status=closed&index=${index}`);
+      total = Number(headers.get('x-total-count') || 0);
+      if (!json.length) break;
+      for (const c of json) closedIds.add(String(c.id));
+      index += json.length;
+    }
+  });
+  await pool([...closedIds].filter((id) => !closedCache[id]?.spent_by), async (id) => {
+    const d = (await get(`/channels/${id}`)).json;
+    const e = {
+      id, short_id: d.short_id, capacity: Number(d.capacity), txid: d.transaction_id, vout: d.transaction_vout,
+      created: ts(d.created), n1: d.node_left?.public_key, n2: d.node_right?.public_key, spent_by: null,
+    };
+    try {
+      const o = (await get(`/tx/${e.txid}/outspend/${e.vout}`, 3, TX_API)).json;
+      if (o?.spent && o.txid) e.spent_by = o.txid;
+    } catch { /* retried next run */ }
+    closedCache[id] = e;
+  });
+  writeAtomic('closed.json', closedCache);
+  const pair = (a, b) => [a, b].sort().join(':');
+  const byFunding = new Map();
+  for (const c of [...Object.values(closedCache), ...channels]) byFunding.set(c.txid, c);
+  const prevOf = {}; const splice_next = {};
+  for (const c of Object.values(closedCache)) {
+    const nxt = c.spent_by && byFunding.get(c.spent_by);
+    if (!nxt || nxt.id === c.id || pair(nxt.n1, nxt.n2) !== pair(c.n1, c.n2)) continue;
+    prevOf[nxt.id] = c; splice_next[c.id] = { id: nxt.id, short_id: nxt.short_id, old_short_id: c.short_id };
+  }
+  const splice_log = [];
+  const link = (c) => ({ id: c.id, short_id: c.short_id, capacity: c.capacity, created: c.created });
+  for (const c of channels) {
+    const chain = [];
+    for (let p = prevOf[c.id]; p && chain.length < 100; p = prevOf[p.id]) chain.unshift(link(p));
+    if (!chain.length) continue;
+    c.splices = chain;                      // oldest first: how the channel looked before each splice
+    c.first_open = chain[0].created;        // the channel has been open since then, not since its last splice
+    [...chain, link(c)].forEach((cur, i, all) => {
+      if (i) splice_log.push({ t: cur.created, n1: c.n1, n2: c.n2, from: all[i - 1], to: cur, delta: cur.capacity - all[i - 1].capacity, live: c.id });
+    });
+  }
+  splice_log.sort((a, b) => (b.t || 0) - (a.t || 0));
+  for (const c of channels) if (c.splices) for (const pk of [c.n1, c.n2]) if (nodes[pk]) nodes[pk].splices = (nodes[pk].splices || 0) + c.splices.length;
+
   // 5. Network stats.
   const allPpm = []; const allBase = [];
   for (const c of channels) for (const p of [c.p1, c.p2]) if (p && !p.disabled) { allPpm.push(p.ppm); allBase.push(p.base); }
@@ -226,6 +286,7 @@ async function run() {
     clearnet_only: Object.values(nodes).filter((n) => n.clearnet && !n.tor).length,
     hybrid: Object.values(nodes).filter((n) => n.clearnet && n.tor).length,
     no_address: Object.values(nodes).filter((n) => !n.sockets.length).length,
+    splices: splice_log.length,
     backend: latest,
   };
 
@@ -273,9 +334,9 @@ async function run() {
   } catch { /* none yet */ }
   writeAtomic('history.json', { since: tracking, generated: now, changes: hist });
 
-  writeAtomic('graph.json', { generated: now, network, nodes: Object.values(nodes), channels });
+  writeAtomic('graph.json', { generated: now, network, nodes: Object.values(nodes), channels, splice_next, splice_log });
   writeAtomic('status.json', { running: false, started, finished: new Date().toISOString(), ok: true, history_since: tracking, nodes: network.nodes, channels: network.channels, changes: changes.length });
-  log(`ok: ${network.nodes} nodes, ${network.channels} channels, ${changes.length} policy changes`);
+  log(`ok: ${network.nodes} nodes, ${network.channels} channels, ${splice_log.length} splices, ${changes.length} policy changes`);
 }
 
 fs.mkdirSync(DATA_DIR, { recursive: true });

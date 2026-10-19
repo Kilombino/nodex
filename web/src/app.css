@@ -231,7 +231,12 @@ tbody tr:hover { background: #142029; }
   --cut: 12px;
   --head: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 }
-body {
+/* The backdrop lives on its own fixed layer: a fixed background on body itself is
+   repainted in full on every scroll frame (Safari especially). */
+body { background: var(--bg); }
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  transform: translateZ(0); will-change: transform;
   background:
     radial-gradient(1100px 520px at 8% -8%, rgba(42, 216, 255, .13), transparent 62%),
     radial-gradient(900px 480px at 102% -4%, rgba(255, 122, 26, .12), transparent 60%),
@@ -239,13 +244,12 @@ body {
     repeating-linear-gradient(0deg, rgba(42, 216, 255, .045) 0 1px, transparent 1px 46px),
     repeating-linear-gradient(90deg, rgba(42, 216, 255, .045) 0 1px, transparent 1px 46px),
     var(--bg);
-  background-attachment: fixed;
 }
 h1, h2, h3 { font-family: var(--head); }
 h1 { letter-spacing: .02em; }
 
 /* header: glass with a live bottom edge */
-.top { background: rgba(4, 6, 12, .82); border-bottom: 0; }
+.top { background: rgb(4, 6, 12); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 0; }
 .top::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
   background: linear-gradient(90deg, transparent, var(--acc) 20%, var(--acc2) 50%, var(--hot) 70%, transparent);
@@ -273,7 +277,8 @@ input[type=search]:focus, input[type=text]:focus { border-color: var(--acc); box
     linear-gradient(135deg, rgba(42, 216, 255, .55), rgba(23, 48, 90, .5) 35%, rgba(23, 48, 90, .35) 65%, rgba(255, 180, 58, .5)) border-box;
   border: 1px solid transparent;
   clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
-  box-shadow: 0 0 0 1px rgba(42, 216, 255, .04) inset, 0 18px 40px -24px rgba(0, 0, 0, .8);
+  /* only the inset edge: clip-path cuts any outer shadow off anyway, and painting it costs */
+  box-shadow: 0 0 0 1px rgba(42, 216, 255, .04) inset;
 }
 .stat::before, .card::before {
   content: ""; position: absolute; top: 0; left: var(--cut); right: 30%; height: 2px;
@@ -333,7 +338,7 @@ th.sort.on { color: var(--acc2); }
 @keyframes nx-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .loading { animation: none; } }
 .stat .v small, .stat .v .dim { text-shadow: none; color: var(--mute); }
-.top::after { background-size: 200% 100%; animation: nx-current 6s linear infinite; }
+.top::after { background-size: 200% 100%; }
 @keyframes nx-current { to { background-position: -200% 0; } }
 .toplist li:hover { background: linear-gradient(90deg, rgba(42, 216, 255, .08), transparent); }
 .toplist li:hover .who a { color: #fff; text-shadow: 0 0 10px var(--glow); }
@@ -354,3 +359,5 @@ th.sort.on { color: var(--acc2); }
 .ktag.k-set { color: var(--acc2); border-color: rgba(255, 180, 58, .5); }
 .ktag.k-off { color: var(--dim); border-color: var(--line); }
 .ktag.k-on, .ktag.k-chg { color: var(--link); border-color: var(--line); }
+.ktag.k-splice { color: #c9a6ff; border-color: rgba(201, 166, 255, .5); box-shadow: 0 0 8px rgba(201, 166, 255, .2); white-space: nowrap; }
+.badge.splice { color: #c9a6ff; border-color: rgba(201, 166, 255, .45); }
