@@ -231,7 +231,7 @@ async function run() {
       index += json.length;
     }
   });
-  await pool([...closedIds].filter((id) => !closedCache[id]?.spent_by), async (id) => {
+  await pool([...closedIds].filter((id) => !closedCache[id]?.spent_by || !closedCache[id]?.closed_at), async (id) => {
     const d = (await get(`/channels/${id}`)).json;
     const e = {
       id, short_id: d.short_id, capacity: Number(d.capacity), txid: d.transaction_id, vout: d.transaction_vout,
@@ -239,7 +239,7 @@ async function run() {
     };
     try {
       const o = (await get(`/tx/${e.txid}/outspend/${e.vout}`, 3, TX_API)).json;
-      if (o?.spent && o.txid) e.spent_by = o.txid;
+      if (o?.spent && o.txid) { e.spent_by = o.txid; e.closed_at = o.status?.block_time || null; }
     } catch { /* retried next run */ }
     closedCache[id] = e;
   });
@@ -373,7 +373,11 @@ async function run() {
   } catch { /* none yet */ }
   writeAtomic('history.json', { since: tracking, generated: now, changes: hist });
 
-  writeAtomic('graph.json', { generated: now, network, nodes: Object.values(nodes), channels, splice_next, splice_log });
+  // Channels that really closed (a splice is not a close), newest first.
+  const closed_log = Object.values(closedCache).filter((c) => !splice_next[c.id] && c.closed_at)
+    .sort((a, b) => b.closed_at - a.closed_at).slice(0, 100)
+    .map((c) => ({ id: c.id, short_id: c.short_id, capacity: c.capacity, n1: c.n1, n2: c.n2, created: c.created, closed_at: c.closed_at }));
+  writeAtomic('graph.json', { generated: now, network, nodes: Object.values(nodes), channels, splice_next, splice_log, closed_log });
   writeAtomic('status.json', { running: false, started, finished: new Date().toISOString(), ok: true, history_since: tracking, nodes: network.nodes, channels: network.channels, changes: changes.length });
   log(`ok: ${network.nodes} nodes, ${network.channels} channels, ${splice_log.length} splices, ${changes.length} policy changes`);
 }

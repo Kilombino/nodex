@@ -59,6 +59,12 @@ function age(ts) {
   if (d < 60) return `${Math.round(d)} d`;
   return `${nf(d / 30, 1)} ${lang === 'es' ? 'meses' : 'mo'}`;
 }
+function span(secs) {
+  const d = secs / 86400;
+  if (d < 1) return `${Math.max(1, Math.round(d * 24))} h`;
+  if (d < 60) return `${Math.round(d)} d`;
+  return `${nf(d / 30, 1)} ${lang === 'es' ? 'meses' : 'mo'}`;
+}
 const short = (pk) => `${pk.slice(0, 10)}…${pk.slice(-6)}`;
 const blockOf = (sid) => (sid ? Number(String(sid).split('x')[0]) : null);
 // Splices: a spliced channel gets a new funding output and short id, and the graph shows it as
@@ -282,6 +288,22 @@ function changeText(c) {
 // A channel side switched off or on and nothing else: what a node does when its peer goes
 // offline and comes back. Real, but noise next to fee changes, so the network-wide feeds skip it.
 const feeChange = (c) => !(c.kind === 'update' && (c.fields || []).every((f) => f === 'disabled'));
+// Only real fee changes for the network-wide feeds: not the first policy of a new channel, not
+// a channel closing (its policy just disappears), not switching off and on, and not a splice
+// that keeps the fees it had. A splice that comes with different fees does count.
+const FEE_FIELDS = ['base', 'ppm', 'cltv', 'min', 'max'];
+function realFeeChanges(changes) {
+  const before = new Map();   // policy of the old channel, by direction, for splices
+  for (const c of changes) if (splicedAway(c)) before.set(`${idx.spliceNext[c.ch].id}:${c.from}`, c.old);
+  return changes.flatMap((c) => {
+    if (c.kind === 'update') return feeChange(c) ? [c] : [];
+    if (!splicedIn(c)) return [];
+    const o = before.get(`${c.ch}:${c.from}`);
+    const fields = o ? FEE_FIELDS.filter((f) => o[f] !== c.new[f]) : [];
+    // Shown as an ordinary change, old fees → new fees.
+    return fields.length ? [{ ...c, kind: 'update', fields, old: o }] : [];
+  });
+}
 // What kind of change it is, for the tag at the start of the line.
 function changeKind(c) {
   if (splicedAway(c) || splicedIn(c)) return ['splice', t('sp.kind')];
@@ -572,10 +594,11 @@ async function pageActivity() {
   const newCh = g.channels.filter((c) => !c.splices).sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 40);
   $app.innerHTML = `<h1>${t('act.title')}</h1><p class="mute">${t('act.sub')}</p>
     <p class="note">${t('node.history.note', { since: h.since ? dateStr(h.since, true) : '–' })}</p>
-    <div class="grid act3">
+    <div class="grid act4">
       <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
+      <div class="card"><h2>${t('cl.recent')}</h2>${g.closed_log?.length ? `<ul class="feed">${g.closed_log.slice(0, 40).map((c) => `<li><time title="${esc(dateStr(c.closed_at, true))}">${esc(ago(c.closed_at))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span> · ${esc(t('cl.lived', { d: span(c.closed_at - c.created) }))}</span></li>`).join('')}</ul>` : `<p class="mute">–</p>`}</div>
       <div class="card"><h2>${t('sp.recent')}</h2>${g.splice_log?.length ? `<ul class="feed">${g.splice_log.slice(0, 40).map((x) => `<li><time title="${esc(dateStr(x.t, true))}">${esc(ago(x.t))}</time><span>${splicePair(x.n1, x.n2, x.funder)} <span class="ktag k-splice">${esc(t(x.delta >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.delta))}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.live)}" data-link>${esc(x.to.short_id)}</a> · ${cap(x.from.capacity)} → <span ${capTitle(x.to.capacity)}>${cap(x.to.capacity)}</span></span></li>`).join('')}</ul><p class="small dim">${t('sp.funder.note')}</p>` : `<p class="mute">–</p>`}</div>
-      <div class="card"><h2>${t('top.changes')}</h2>${feedList(h.changes.filter(feeChange).slice(0, 150))}</div>
+      <div class="card"><h2>${t('top.changes')}</h2>${feedList(realFeeChanges(h.changes).slice(0, 150))}</div>
     </div>`;
 }
 
