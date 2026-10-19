@@ -66,11 +66,17 @@ const blockOf = (sid) => (sid ? Number(String(sid).split('x')[0]) : null);
 const lastSplice = (c) => c?.splices?.[c.splices.length - 1];
 const opened = (c) => c?.first_open || c?.created;
 const signedCap = (d) => `${d >= 0 ? '+' : '−'}${cap(Math.abs(d))}`;
+// Who put the funds in, when the indexer could trace it from the splice's inputs.
+const funderTitle = (pk) => (pk ? ` ${t('sp.funder.title', { a: alias(pk) })}` : '');
+function splicePair(n1, n2, funder) {
+  if (!funder) return `${nodeLink(n1)} ⇄ ${nodeLink(n2)}`;
+  return `<span title="${esc(funderTitle(funder).trim())}">${nodeLink(funder)} → ${nodeLink(funder === n1 ? n2 : n1)}</span>`;
+}
 function spliceTag(c) {
   const p = lastSplice(c);
   if (!p) return '';
   const d = c.capacity - p.capacity;
-  return `<span class="ktag k-splice" title="${esc(t('sp.tag.title', { n: c.splices.length, a: cap(p.capacity), b: cap(c.capacity) }))}">${esc(t(d >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(d))}</span>`;
+  return `<span class="ktag k-splice" title="${esc(t('sp.tag.title', { n: c.splices.length, a: cap(p.capacity), b: cap(c.capacity) }) + funderTitle(c.splice_funder))}">${esc(t(d >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(d))}</span>`;
 }
 
 // ---------- data ----------
@@ -514,7 +520,7 @@ async function pageChannel(id) {
       ${c.splices ? `<div class="stat"><div class="k">${t('sp.since')}</div><div class="v small">${esc(dateStr(opened(c)))}</div><div class="s">${esc(age(opened(c)))} · ${esc(t('sp.count', { n: c.splices.length }))}</div></div>` : ''}
     </div>
     ${c.splices ? `<section class="section card"><h2>${t('sp.history')}</h2><div class="small mute">${t('sp.history.s')}</div>
-      <ul class="feed">${[...c.splices, c].map((x, i, all) => `<li><time title="${esc(dateStr(x.created, true))}">${esc(dateStr(x.created))}</time><span>${i ? `<span class="ktag k-splice">${esc(t(x.capacity >= all[i - 1].capacity ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.capacity - all[i - 1].capacity))}</span>` : `<span class="ktag k-set">${esc(t('sp.open'))}</span>`} <a class="mono small" href="/channel/${esc(x.id)}" data-link>${esc(x.short_id)}</a></span><span class="val small" ${capTitle(x.capacity)}>${cap(x.capacity)}</span></li>`).reverse().join('')}</ul></section>` : ''}
+      <ul class="feed">${[...c.splices, c].map((x, i, all) => `<li><time title="${esc(dateStr(x.created, true))}">${esc(dateStr(x.created))}</time><span>${i ? `<span class="ktag k-splice">${esc(t(x.capacity >= all[i - 1].capacity ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.capacity - all[i - 1].capacity))}</span>` : `<span class="ktag k-set">${esc(t('sp.open'))}</span>`} <a class="mono small" href="/channel/${esc(x.id)}" data-link>${esc(x.short_id)}</a>${(x === c ? c.splice_funder : x.funder) ? ` <span class="small mute">${t('sp.by', { a: nodeLink(x === c ? c.splice_funder : x.funder) })}</span>` : ''}</span><span class="val small" ${capTitle(x.capacity)}>${cap(x.capacity)}</span></li>`).reverse().join('')}</ul></section>` : ''}
     <p>${t('ch.funding')}: <a class="mono small" style="word-break:break-all" href="${MEMPOOL}/tx/${esc(c.txid)}:${esc(c.vout)}" rel="noopener">${esc(c.txid)}:${esc(c.vout)}</a></p>
     <div class="grid cols2">${pol(c.p1, c.n1, c.n2)}${pol(c.p2, c.n2, c.n1)}</div>
     <section class="section card"><h2>${t('node.history')}</h2><div id="chhist"></div></section>`;
@@ -563,13 +569,13 @@ async function pageRankings(metric = 'capacity') {
 async function pageActivity() {
   setNav('activity'); setTitle(t('act.title'));
   const [g, h] = await Promise.all([loadGraph(), loadHist(), loadDir()]);
-  const newCh = [...g.channels].sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 40);
+  const newCh = g.channels.filter((c) => !c.splices).sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 40);
   $app.innerHTML = `<h1>${t('act.title')}</h1><p class="mute">${t('act.sub')}</p>
     <p class="note">${t('node.history.note', { since: h.since ? dateStr(h.since, true) : '–' })}</p>
-    <div class="grid cols2">
+    <div class="grid act3">
+      <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
+      <div class="card"><h2>${t('sp.recent')}</h2>${g.splice_log?.length ? `<ul class="feed">${g.splice_log.slice(0, 40).map((x) => `<li><time title="${esc(dateStr(x.t, true))}">${esc(ago(x.t))}</time><span>${splicePair(x.n1, x.n2, x.funder)} <span class="ktag k-splice">${esc(t(x.delta >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.delta))}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.live)}" data-link>${esc(x.to.short_id)}</a> · ${cap(x.from.capacity)} → <span ${capTitle(x.to.capacity)}>${cap(x.to.capacity)}</span></span></li>`).join('')}</ul><p class="small dim">${t('sp.funder.note')}</p>` : `<p class="mute">–</p>`}</div>
       <div class="card"><h2>${t('top.changes')}</h2>${feedList(h.changes.filter(feeChange).slice(0, 150))}</div>
-      ${g.splice_log?.length ? `<div class="card"><h2>${t('sp.recent')}</h2><ul class="feed">${g.splice_log.slice(0, 40).map((x) => `<li><time title="${esc(dateStr(x.t, true))}">${esc(ago(x.t))}</time><span>${nodeLink(x.n1)} ⇄ ${nodeLink(x.n2)} <span class="ktag k-splice">${esc(t(x.delta >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.delta))}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.live)}" data-link>${esc(x.to.short_id)}</a> · ${cap(x.from.capacity)} → <span ${capTitle(x.to.capacity)}>${cap(x.to.capacity)}</span></span></li>`).join('')}</ul></div>` : ''}
-      <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)} ${spliceTag(c)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
     </div>`;
 }
 

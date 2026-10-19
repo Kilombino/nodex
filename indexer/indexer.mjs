@@ -265,6 +265,45 @@ async function run() {
       if (i) splice_log.push({ t: cur.created, n1: c.n1, n2: c.n2, from: all[i - 1], to: cur, delta: cur.capacity - all[i - 1].capacity, live: c.id });
     });
   }
+  // Who put the money in. A splice-in spends the old funding output plus coins from one
+  // node's wallet. Walking those coins back (first input, a few hops) usually reaches an
+  // earlier channel funding or splice paid from the same wallet: if that channel has exactly
+  // one of the two nodes, that node funded this splice. No guess is shown when it is unclear.
+  const funderCache = readJson('funders.json', {});
+  const pairOf = new Map();
+  for (const c of [...Object.values(closedCache), ...channels]) {
+    if (!pairOf.has(c.txid)) pairOf.set(c.txid, []);
+    pairOf.get(c.txid).push([c.n1, c.n2]);
+  }
+  const txCache = new Map();
+  const getTx = async (id) => {
+    if (!txCache.has(id)) txCache.set(id, (await get(`/tx/${id}`, 3, TX_API)).json);
+    return txCache.get(id);
+  };
+  await pool(splice_log.filter((x) => x.delta > 0 && !funderCache[x.to.id]), async (x) => {
+    const live = channels.find((c) => c.id === x.to.id) || closedCache[x.to.id];
+    const oldTxid = (closedCache[x.from.id] || {}).txid;
+    const tx = await getTx(live.txid);
+    for (const vin of tx.vin) {
+      if (vin.txid === oldTxid) continue;
+      let t = vin.txid;
+      for (let hop = 0; hop < 6 && t; hop++) {
+        const hits = (pairOf.get(t) || []).map(([a, b]) => [a, b].filter((pk) => pk === x.n1 || pk === x.n2));
+        const one = hits.find((h) => h.length === 1);
+        if (one) { funderCache[x.to.id] = { pk: one[0], hops: hop }; return; }
+        if (hits.length) return;            // a channel between the same two nodes: can't tell
+        const pt = await getTx(t);
+        t = pt?.vin?.[0] && !pt.vin[0].is_coinbase ? pt.vin[0].txid : null;
+      }
+    }
+  });
+  writeAtomic('funders.json', funderCache);
+  for (const x of splice_log) if (funderCache[x.to.id]) x.funder = funderCache[x.to.id].pk;
+  const funderOf = Object.fromEntries(splice_log.filter((x) => x.funder).map((x) => [x.to.id, x.funder]));
+  for (const c of channels) {
+    if (funderOf[c.id]) c.splice_funder = funderOf[c.id];
+    for (const p of c.splices || []) if (funderOf[p.id]) p.funder = funderOf[p.id];
+  }
   splice_log.sort((a, b) => (b.t || 0) - (a.t || 0));
   for (const c of channels) if (c.splices) for (const pk of [c.n1, c.n2]) if (nodes[pk]) nodes[pk].splices = (nodes[pk].splices || 0) + c.splices.length;
 

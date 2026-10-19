@@ -361,3 +361,7 @@ th.sort.on { color: var(--acc2); }
 .ktag.k-on, .ktag.k-chg { color: var(--link); border-color: var(--line); }
 .ktag.k-splice { color: #c9a6ff; border-color: rgba(201, 166, 255, .5); box-shadow: 0 0 8px rgba(201, 166, 255, .2); white-space: nowrap; }
 .badge.splice { color: #c9a6ff; border-color: rgba(201, 166, 255, .45); }
+/* Activity: new channels, splices and fee changes side by side on wide screens. */
+.act3 { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.act3 .feed li { flex-wrap: wrap; }
+@media (max-width: 1100px) { .act3 { grid-template-columns: 1fr; } }
