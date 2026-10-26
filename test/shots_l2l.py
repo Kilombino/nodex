@@ -73,7 +73,12 @@ with sync_playwright() as p:
         ck = [c for c in ctx.cookies() if c['name'] == 'lndir_session']
         check(ck and ck[0]['httpOnly'] and ck[0]['sameSite'] == 'Strict' and ck[0]['path'] == '/api/ln-directory', f'{mode} session cookie HttpOnly/Strict/path')
         check('lndir_session' not in pg.evaluate('document.cookie'), f'{mode} cookie not readable from JS')
-        check('aún no están disponibles' in pg.inner_text('#l2l-me'), f'{mode} telegram: not available without a token')
+        if pg.locator('#l2l-tg-link').count():
+            pg.click('#l2l-tg-link'); pg.wait_for_selector('#l2l-tg a.btn')
+            href = pg.get_attribute('#l2l-tg a.btn', 'href')
+            check(href.startswith('https://t.me/') and '?start=' in href and len(href.split('?start=')[1]) >= 20, f'{mode} telegram: one-time deep link ({href.split("?")[0]})')
+        else:
+            check('aún no están disponibles' in pg.inner_text('#l2l-me') or 'avisos activados' in pg.inner_text('#l2l-me'), f'{mode} telegram: state shown')
         pg.screenshot(path=f'{OUT}/{mode}-l2l-in.png', full_page=True)
 
         # --- the operator card editor ---
