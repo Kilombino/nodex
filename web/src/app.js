@@ -397,12 +397,9 @@ async function pageHome() {
   });
 }
 
-function opCard(pk) {
-  const e = dir?.[pk];
-  if (!e) {
-    return `<div class="card"><h2>${t('node.op')}</h2><div class="empty"><p style="margin:0 0 8px"><b>${t('node.op.none')}</b></p><p class="small" style="margin:0 0 10px">${t('node.op.none.s')}</p>
-      <a class="btn sm" href="/card" data-link>${t('node.op.none')} →</a></div></div>`;
-  }
+// The operator's directory card (the same JSON mempool.kilombino.com shows): body only, so the
+// node page and the L2L "your node" panel render it the same way.
+function opCardBody(e) {
   const C = e.contacts || {};
   const link = (href, label) => `<a href="${esc(href)}" rel="noopener noreferrer nofollow" target="_blank">${esc(label)}</a>`;
   const rows = [];
@@ -414,15 +411,21 @@ function opCard(pk) {
   if (C.email) rows.push(['Email', link(`mailto:${C.email}`, C.email)]);
   if (C.discord) rows.push(['Discord', /^https:\/\//.test(C.discord) ? link(C.discord, C.discord) : `<span>${esc(C.discord)}</span> ${copyBtn(C.discord)}`]);
   if (C.simplex) rows.push(['SimpleX', /^https:\/\//.test(C.simplex) ? link(C.simplex, 'SimpleX') : `${copyBtn(C.simplex)}`]);
-  return `<div class="card opcard"><h2>${t('node.op')} <a href="/card" data-link>${t('node.op.edit')} ✎</a></h2>
-    ${e.name ? `<div class="name">${esc(e.name)}</div>` : ''}
-    ${e.description ? `<p style="margin:6px 0">${esc(e.description)}</p>` : ''}
+  return `${e.name ? `<div class="name">${esc(e.name)}</div>` : ''}
+    ${e.description ? `<p class="l2l-text" style="margin:6px 0">${esc(e.description)}</p>` : ''}
     ${e.tags?.length ? `<div class="tags">${e.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
     ${rows.length ? `<div class="contacts">${rows.map(([k, v]) => `<div><span class="ck">${k}</span>${v}</div>`).join('')}</div>` : ''}
     <dl class="kv" style="margin-top:10px">
       ${e.min_channel_size ? `<dt>${t('node.op.min')}</dt><dd>${cap(e.min_channel_size)}</dd>` : ''}
       ${e.since ? `<dt>${t('node.op.since')}</dt><dd>${esc(e.since)}</dd>` : ''}
-    </dl></div>`;
+    </dl>`;
+}
+// The edit / add link is filled in afterwards, only for the node's own operator (see L2.fillOwnerLinks).
+function opCard(pk) {
+  const e = dir?.[pk];
+  const own = `<span class="op-own" data-pk="${esc(pk)}" data-has="${e ? 1 : 0}"></span>`;
+  if (!e) return `<div class="card opcard op-none"><h2>${t('node.op')} ${own}</h2><p class="mute small">${t('node.op.nocard')}</p></div>`;
+  return `<div class="card opcard"><h2>${t('node.op')} ${own}</h2>${opCardBody(e)}</div>`;
 }
 
 async function pageNode(pk) {
@@ -502,6 +505,7 @@ async function pageNode(pk) {
   ], chans, { key: 'cap' });
 
   L2.fillNodeCard(pk);
+  L2.fillOwnerLinks();
 
   loadUptime().then((u) => {
     const el = document.getElementById('nodeup');
@@ -685,7 +689,7 @@ function attachSuggest(form) {
 }
 
 // ---------- Lightning2Lightning ----------
-const L2 = initL2L({ t, esc, nf, cap, dateStr, ago, nodeLink, copyBtn, setNav, setTitle, loadGraph, go, resetDir, app: $app, lang: () => lang });
+const L2 = initL2L({ t, esc, nf, cap, dateStr, ago, nodeLink, copyBtn, setNav, setTitle, loadGraph, go, resetDir, loadDir, opCardBody, dirEntry: (pk) => dir?.[pk], app: $app, lang: () => lang });
 
 // ---------- router ----------
 function bindSearch(form) {

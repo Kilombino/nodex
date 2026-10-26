@@ -406,3 +406,5 @@ body:has(.act4) .wrap { max-width: 1720px; }
 .l2l-form label.bad input, .l2l-form label.bad textarea { border-color: var(--bad); }
 .l2l-form h3 { margin: 6px 0 0; }
 .l2l-pen { margin-top: 10px; }
+.l2l-mycard.opcard { background: none; border: 0; box-shadow: none; clip-path: none; padding: 0; margin: 8px 0 0; }
+.l2l-mycard.opcard::before, .l2l-mycard.opcard::after { display: none; }

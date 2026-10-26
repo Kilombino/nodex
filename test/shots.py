@@ -29,6 +29,8 @@ with sync_playwright() as p:
         pg.goto(BASE + '/node/' + PK); pg.wait_for_selector('#chtable table'); pg.wait_for_timeout(1500)
         txt = pg.inner_text('main')
         check('Kilombino' in txt and 'Ficha del operador' in txt, f'{mode} node page + operator card')
+        card = pg.inner_text('.opcard')
+        check('Nodo de Kilombino' in card and '@Kilombino' in card and pg.locator('.opcard .contacts a').count() >= 5, f'{mode} his directory card: description and contacts')
         rows = pg.locator('#chtable tbody tr').count(); check(rows >= 30, f'{mode} node channels rows={rows}')
         check('.onion' in txt, f'{mode} node shows onion address')
         # One copy button per announced address, copying pubkey@host:port whole.

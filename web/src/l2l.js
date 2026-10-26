@@ -42,7 +42,8 @@ export function initL2L(h) {
   const unmetText = (u) => t(`l2l.unmet.${u.req}`, { need: u.req === 'min_capacity' ? cap(u.need) : nf(u.need), have: u.req === 'min_capacity' ? cap(u.have) : nf(u.have) });
   const stateBadge = (s) => `<span class="badge l2l-st st-${esc(s)}">${esc(t(`l2l.state.${s}`))}</span>`;
   const scoreBadge = (n) => (n == null ? '' : `<span class="l2l-sc ${n >= 70 ? 'hi' : n >= 40 ? 'mid' : 'lo'}" title="${esc(t('l2l.score'))}">${nf(n)}</span>`);
-  const who = (pk, nodes) => `${nodeLink(pk, nodes?.[pk]?.alias || undefined)}${nodes?.[pk] ? ` ${scoreBadge(nodes[pk].score)}` : ''}`;
+  const opName = (pk, nodes) => { const n = h.dirEntry(pk)?.name; return n && n !== nodes?.[pk]?.alias ? ` <span class="small dim">· ${esc(n)}</span>` : ''; };
+  const who = (pk, nodes) => `${nodeLink(pk, nodes?.[pk]?.alias || undefined)}${opName(pk, nodes)}${nodes?.[pk] ? ` ${scoreBadge(nodes[pk].score)}` : ''}`;
   const msgBox = (id) => `<div id="${id}" class="l2l-msg" role="status"></div>`;
   function say(id, text, ok = false) {
     const el = document.getElementById(id);
@@ -68,13 +69,16 @@ export function initL2L(h) {
       return;
     }
     const tg = me.telegram || {};
+    await h.loadDir();
+    const card = h.dirEntry(me.pubkey);
     el.innerHTML = `<h2>${t('l2l.me')}</h2>
       <div class="l2l-me"><div><b>${nodeLink(me.pubkey, me.alias || undefined)}</b> ${scoreBadge(me.score)}</div>
       <div class="small mute mono">${esc(me.pubkey.slice(0, 20))}…</div></div>
+      <div class="l2l-mycard opcard">${card ? h.opCardBody(card) : `<p class="mute small">${t('node.op.nocard.mine')}</p>`}</div>
       <dl class="kv" style="margin-top:10px">
         <dt>${t('l2l.tg')}</dt><dd id="l2l-tg">${tg.linked ? `<span class="badge ok">${t('l2l.tg.on')}</span> <button class="copy" type="button" id="l2l-tg-off">${t('l2l.tg.off')}</button>`
           : tg.bot ? `<button class="btn sm" type="button" id="l2l-tg-link">${t('l2l.tg.link')}</button>` : `<span class="mute small">${t('l2l.tg.none')}</span>`}</dd>
-        <dt>${t('node.op')}</dt><dd><a href="/card" data-link>${t('node.op.edit')} ✎</a></dd>
+        <dt>${t('node.op')}</dt><dd><a href="/card" data-link id="l2l-edit-card">${t(card ? 'node.op.edit' : 'node.op.add')} ✎</a></dd>
       </dl>
       <div class="l2l-row"><a class="btn ghost sm" href="/node/${esc(me.pubkey)}" data-link>${t('l2l.myrep')}</a>
       <button class="btn ghost sm" type="button" id="l2l-logout">${t('l2l.logout')}</button></div>${msgBox('l2l-me-msg')}`;
@@ -196,7 +200,7 @@ export function initL2L(h) {
   // ---------- ring detail ----------
   async function pageRing(id) {
     setNav('l2l');
-    const [, r] = await Promise.all([loadGraph(), req('GET', `/l2l/rings/${encodeURIComponent(id)}`), loadMe(true)]);
+    const [, r] = await Promise.all([loadGraph(), req('GET', `/l2l/rings/${encodeURIComponent(id)}`), loadMe(true), h.loadDir()]);
     const g = r.ring; const nodes = r.nodes; const m = r.me;
     setTitle(`${t('l2l.ring')} ${g.id}`);
     const deadline = g.state === 'open' ? [t('l2l.fillby'), g.fill_deadline] : [t('l2l.openby'), g.open_deadline];
@@ -364,9 +368,20 @@ export function initL2L(h) {
       </div>`;
   }
 
+  // Edit / add-card links on node pages, only for the node's own operator.
+  async function fillOwnerLinks() {
+    const spots = [...document.querySelectorAll('.op-own')];
+    if (!spots.length) return;
+    await loadMe();
+    for (const el of spots) {
+      if (me.logged_in && me.pubkey === el.dataset.pk) el.innerHTML = `<a href="/card" data-link>${t(el.dataset.has === '1' ? 'node.op.edit' : 'node.op.add')} ✎</a>`;
+      else if (!me.logged_in && el.dataset.has !== '1') el.innerHTML = `<a class="small" href="/card" data-link>${t('node.op.mine')}</a>`;
+    }
+  }
+
   let route = () => {};
   return {
-    pageL2L, pageRing, pageCard, nodeCardShell, fillNodeCard,
+    pageL2L, pageRing, pageCard, nodeCardShell, fillNodeCard, fillOwnerLinks,
     setRoute(fn) { route = fn; },
     resetSession() { me = null; },
   };

@@ -70,6 +70,7 @@ with sync_playwright() as p:
         pg.fill('#l2l-sig', raw)  # the whole JSON output is accepted too
         pg.click('#l2l-login-go'); pg.wait_for_selector('#l2l-logout', timeout=20000); pg.wait_for_timeout(500)
         check('Kilombino' in pg.inner_text('#l2l-me'), f'{mode} logged in as Kilombino')
+        check('Nodo de Kilombino' in pg.inner_text('#l2l-me') and pg.locator('#l2l-me .contacts a').count() >= 5, f'{mode} "your node" shows his card (description, contacts)')
         ck = [c for c in ctx.cookies() if c['name'] == 'lndir_session']
         check(ck and ck[0]['httpOnly'] and ck[0]['sameSite'] == 'Strict' and ck[0]['path'] == '/api/ln-directory', f'{mode} session cookie HttpOnly/Strict/path')
         check('lndir_session' not in pg.evaluate('document.cookie'), f'{mode} cookie not readable from JS')
@@ -123,6 +124,7 @@ with sync_playwright() as p:
 
         # --- reputation on the node page ---
         pg.goto(BASE + '/node/' + PK); pg.wait_for_selector('#l2l-rep .l2l-big', timeout=20000)
+        check('Nodo de Kilombino' in pg.inner_text('.opcard') and pg.locator('.op-own a[href="/card"]').count() == 1, f'{mode} node page: his card with the owner edit link')
         txt = pg.inner_text('#l2l-rep')
         check(all(x in txt.lower() for x in ('reputación l2l', 'punto de partida', '/100')), f'{mode} node page reputation card')
         pg.locator('#l2l-rep').screenshot(path=f'{OUT}/{mode}-node-rep-es.png')
