@@ -1,4 +1,5 @@
 import { DICT } from './i18n.js';
+import { initL2L } from './l2l.js';
 
 const MEMPOOL = 'https://mempool.kilombino.com';
 const $app = document.getElementById('app');
@@ -479,6 +480,7 @@ async function pageNode(pk) {
     </div>
     ${opCard(pk)}
   </div>
+  ${L2.nodeCardShell()}
   <div class="grid cols3 section">
     <div class="card"><h2>${t('node.feesout')}</h2><div class="small mute">${t('node.feesout.s')}</div>${quant(n.fee_out)}</div>
     <div class="card"><h2>${t('node.feesin')}</h2><div class="small mute">${t('node.feesin.s')}</div>${quant(n.fee_in)}</div>
@@ -496,6 +498,8 @@ async function pageNode(pk) {
     { k: 'cltv', label: t('col.cltv'), v: (r) => r.out?.cltv, h: (r) => `<span class="num">${r.out?.cltv ?? '–'} / ${r.inn?.cltv ?? '–'}</span>`, r: true, cls: 'hide-m' },
     { k: 'fund', label: t('col.funding'), v: (r) => blockOf(r.c.short_id), h: (r) => `<a class="mono small" href="/channel/${esc(r.c.id)}" data-link>${esc(r.c.short_id)}</a> <a class="small" href="${MEMPOOL}/tx/${esc(r.c.txid)}:${esc(r.c.vout)}" rel="noopener" title="${esc(t('ch.funding'))}">tx ↗</a>`, cls: 'hide-m nowrap' },
   ], chans, { key: 'cap' });
+
+  L2.fillNodeCard(pk);
 
   loadUptime().then((u) => {
     const el = document.getElementById('nodeup');
@@ -678,6 +682,9 @@ function attachSuggest(form) {
   input.addEventListener('blur', () => setTimeout(close, 150));
 }
 
+// ---------- Lightning2Lightning ----------
+const L2 = initL2L({ t, esc, nf, cap, dateStr, ago, nodeLink, copyBtn, setNav, setTitle, loadGraph, go, app: $app, lang: () => lang });
+
 // ---------- router ----------
 function bindSearch(form) {
   attachSuggest(form);
@@ -700,6 +707,8 @@ async function route() {
     else if ((m = p.match(/^\/channel\/([0-9x]+)$/))) await pageChannel(m[1]);
     else if ((m = p.match(/^\/rankings(?:\/(\w+))?$/))) await pageRankings(m[1]);
     else if (p === '/activity') await pageActivity();
+    else if ((m = p.match(/^\/l2l(?:\/(active|done|mine))?$/))) await L2.pageL2L(m[1]);
+    else if ((m = p.match(/^\/l2l\/ring\/([0-9a-f]{10})$/))) await L2.pageRing(m[1]);
     else if (p === '/search') await pageSearch(qs.get('q'));
     else { $app.innerHTML = '<h1>404</h1>'; }
   } catch (e) {
@@ -717,6 +726,7 @@ document.addEventListener('click', (e) => {
   go(a.getAttribute('href'));
 });
 window.addEventListener('popstate', route);
+L2.setRoute(route);
 document.getElementById('lang').addEventListener('click', () => {
   lang = lang === 'es' ? 'en' : 'es';
   store.set('nodex.lang', lang);

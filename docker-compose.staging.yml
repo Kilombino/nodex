@@ -1,0 +1,25 @@
+# Nodex STAGING for Lightning2Lightning: LAN only (192.168.0.14:3231, the DOCKER-USER filter keeps
+# it off the internet), this worktree's build, production indexer data read-only, staging API.
+#   ./build.sh && docker compose -f docker-compose.staging.yml up -d
+name: nodex-staging
+services:
+  web-staging:
+    image: nginx:1.27-alpine
+    container_name: nodex-web-staging
+    restart: always
+    ports:
+      - "127.0.0.1:3231:8080"
+      - "192.168.0.14:3231:8080"
+    volumes:
+      - ./nginx/staging.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web/dist:/usr/share/nginx/html:ro
+      - /home/start10/Projects/nodex/data:/srv/data:ro
+      - /home/start10/.local/state/ln-directory-staging/directory:/srv/lndir:ro
+    networks: [mempool]
+    cpus: 0.5
+    mem_limit: 64m
+
+networks:
+  mempool:
+    external: true
+    name: mempool-deploy_default
