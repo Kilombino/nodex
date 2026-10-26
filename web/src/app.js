@@ -178,8 +178,14 @@ function feeCell(p) {
   return `<span class="fee" title="CLTV ${p.cltv} · min ${esc(msat(p.min))} · max ${esc(msat(p.max))}"><b>${nf(p.ppm)}</b> <span class="u">ppm</span> + ${esc(msat(p.base))}${off}</span>`;
 }
 
-function copyBtn(text) {
-  return `<button class="copy" type="button" data-copy="${esc(text)}">${t('node.copy')}</button>`;
+function copyBtn(text, label = t('node.copy')) {
+  return `<button class="copy" type="button" data-copy="${esc(text)}" data-label="${esc(label)}" title="${esc(text)}">${esc(label)}</button>`;
+}
+// One announced address as a full connection string, pubkey@host:port, ready to paste into
+// `lncli connect` / `openchannel`. The pubkey part is shortened on screen, copied whole.
+function addrRow(pk, s) {
+  const kind = s.includes('.onion') ? 'Tor' : s.startsWith('[') ? 'IPv6' : 'IPv4';
+  return `<div class="addr"><span class="badge ${kind === 'Tor' ? 'tor' : 'net'}">${kind}</span><code title="${esc(`${pk}@${s}`)}"><span class="dim">${esc(pk.slice(0, 8))}…@</span>${esc(s)}</code>${copyBtn(`${pk}@${s}`, t('node.copyuri'))}</div>`;
 }
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-copy]');
@@ -191,7 +197,7 @@ document.addEventListener('click', async (e) => {
     ta.remove();
   }
   b.textContent = t('node.copied'); b.classList.add('ok');
-  setTimeout(() => { b.textContent = t('node.copy'); b.classList.remove('ok'); }, 1400);
+  setTimeout(() => { b.textContent = b.dataset.label || t('node.copy'); b.classList.remove('ok'); }, 1400);
 });
 
 function initials(a) {
@@ -463,7 +469,7 @@ async function pageNode(pk) {
   <div class="grid cols2">
     <div class="card">
       <dl class="kv">
-        <dt>${t('node.addresses')}</dt><dd>${sock.length ? sock.map((s) => `<div class="addr"><span class="badge ${s.includes('.onion') ? 'tor' : 'net'}">${s.includes('.onion') ? 'Tor' : s.startsWith('[') ? 'IPv6' : 'IPv4'}</span><code>${esc(s)}</code>${copyBtn(`${pk}@${s}`)}</div>`).join('') : `<span class="mute">${t('node.noaddr')}</span>`}</dd>
+        <dt>${t('node.addresses')}</dt><dd>${sock.length ? sock.map((s) => addrRow(pk, s)).join('') : `<span class="mute">${t('node.noaddr')}</span>`}</dd>
         <dt>${t('node.firstseen')}</dt><dd>${dateStr(n.first_seen, true)} <span class="dim">(${esc(ago(n.first_seen))})</span></dd>
         <dt>${t('node.updated')}</dt><dd>${dateStr(n.updated, true)} <span class="dim">(${esc(ago(n.updated))})</span></dd>
         ${n.city || n.country ? `<dt>${t('node.location')}</dt><dd>${esc([n.city, lang === 'es' ? (n.country_es || n.country) : n.country].filter(Boolean).join(', '))}</dd>` : ''}

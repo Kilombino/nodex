@@ -31,6 +31,11 @@ with sync_playwright() as p:
         check('Kilombino' in txt and 'Ficha del operador' in txt, f'{mode} node page + operator card')
         rows = pg.locator('#chtable tbody tr').count(); check(rows >= 30, f'{mode} node channels rows={rows}')
         check('.onion' in txt, f'{mode} node shows onion address')
+        # One copy button per announced address, copying pubkey@host:port whole.
+        uris = pg.eval_on_selector_all('.addr button.copy', 'bs => bs.map(b => b.dataset.copy)')
+        socks = pg.evaluate(f"fetch('/data/graph.json').then(r => r.json()).then(g => g.nodes.find(n => n.pk === '{PK}').sockets)")
+        check(len(uris) == len(socks) > 0 and all(u == f'{PK}@{s}' for u, s in zip(uris, socks)), f'{mode} copy pubkey@address per socket ({len(uris)})')
+        check('Copiar pubkey@dirección' in txt, f'{mode} copy button label ES')
         shot('node-es')
         pg.click('#chtable th[data-k=out]'); pg.wait_for_timeout(200)
         check(pg.locator('#chtable th.on[data-k=out]').count() == 1, f'{mode} channel table sorts')

@@ -130,8 +130,9 @@ tbody tr:hover { background: #142029; }
 .kv { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 6px 14px; margin: 0; }
 .kv dt { color: var(--mute); font-size: .85rem; }
 .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.addr { display: flex; align-items: center; gap: 8px; margin: 3px 0; min-width: 0; }
-.addr code { font-family: var(--mono); font-size: .8rem; overflow-wrap: anywhere; }
+.addr { display: flex; align-items: center; gap: 8px; margin: 3px 0; min-width: 0; flex-wrap: wrap; }
+.addr code { font-family: var(--mono); font-size: .8rem; word-break: break-all; flex: 1 1 100%; order: 3; margin-bottom: 4px; }
+.addr .copy { flex: none; white-space: nowrap; }
 .opcard { border-color: #1f5a4b; background: linear-gradient(180deg, #0f2420 0, var(--card) 70%); }
 .opcard .name { font-size: 1.15rem; font-weight: 750; }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
