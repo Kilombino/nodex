@@ -110,11 +110,14 @@ async function loadGraph(force = false) {
   footStatus();
   return g;
 }
+let dirBust = '';
 async function loadDir() {
   if (dir) return dir;
-  try { dir = (await getJSON('/resources/lightning-directory.json')).nodes || {}; } catch { dir = {}; }
+  try { dir = (await getJSON(`/resources/lightning-directory.json${dirBust}`)).nodes || {}; } catch { dir = {}; }
   return dir;
 }
+// After editing a card here: read the file again, past any cache.
+function resetDir() { dir = null; dirBust = `?v=${Date.now()}`; }
 async function loadHist() {
   if (hist && Date.now() - hist._at < 120000) return hist;
   try { hist = await getJSON('/data/history.json'); } catch { hist = { since: null, changes: [] }; }
@@ -396,10 +399,9 @@ async function pageHome() {
 
 function opCard(pk) {
   const e = dir?.[pk];
-  const editUrl = `${MEMPOOL}/es/lightning/directory?node=${encodeURIComponent(pk)}`;
   if (!e) {
     return `<div class="card"><h2>${t('node.op')}</h2><div class="empty"><p style="margin:0 0 8px"><b>${t('node.op.none')}</b></p><p class="small" style="margin:0 0 10px">${t('node.op.none.s')}</p>
-      <a class="btn sm" href="${esc(editUrl)}" rel="noopener">${t('node.op.none')} →</a></div></div>`;
+      <a class="btn sm" href="/card" data-link>${t('node.op.none')} →</a></div></div>`;
   }
   const C = e.contacts || {};
   const link = (href, label) => `<a href="${esc(href)}" rel="noopener noreferrer nofollow" target="_blank">${esc(label)}</a>`;
@@ -412,7 +414,7 @@ function opCard(pk) {
   if (C.email) rows.push(['Email', link(`mailto:${C.email}`, C.email)]);
   if (C.discord) rows.push(['Discord', /^https:\/\//.test(C.discord) ? link(C.discord, C.discord) : `<span>${esc(C.discord)}</span> ${copyBtn(C.discord)}`]);
   if (C.simplex) rows.push(['SimpleX', /^https:\/\//.test(C.simplex) ? link(C.simplex, 'SimpleX') : `${copyBtn(C.simplex)}`]);
-  return `<div class="card opcard"><h2>${t('node.op')} <a href="${esc(editUrl)}" rel="noopener">${t('node.op.edit')} ✎</a></h2>
+  return `<div class="card opcard"><h2>${t('node.op')} <a href="/card" data-link>${t('node.op.edit')} ✎</a></h2>
     ${e.name ? `<div class="name">${esc(e.name)}</div>` : ''}
     ${e.description ? `<p style="margin:6px 0">${esc(e.description)}</p>` : ''}
     ${e.tags?.length ? `<div class="tags">${e.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
@@ -683,7 +685,7 @@ function attachSuggest(form) {
 }
 
 // ---------- Lightning2Lightning ----------
-const L2 = initL2L({ t, esc, nf, cap, dateStr, ago, nodeLink, copyBtn, setNav, setTitle, loadGraph, go, app: $app, lang: () => lang });
+const L2 = initL2L({ t, esc, nf, cap, dateStr, ago, nodeLink, copyBtn, setNav, setTitle, loadGraph, go, resetDir, app: $app, lang: () => lang });
 
 // ---------- router ----------
 function bindSearch(form) {
@@ -709,6 +711,7 @@ async function route() {
     else if (p === '/activity') await pageActivity();
     else if ((m = p.match(/^\/l2l(?:\/(active|done|mine))?$/))) await L2.pageL2L(m[1]);
     else if ((m = p.match(/^\/l2l\/ring\/([0-9a-f]{10})$/))) await L2.pageRing(m[1]);
+    else if (p === '/card') await L2.pageCard();
     else if (p === '/search') await pageSearch(qs.get('q'));
     else { $app.innerHTML = '<h1>404</h1>'; }
   } catch (e) {

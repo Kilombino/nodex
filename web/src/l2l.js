@@ -74,7 +74,7 @@ export function initL2L(h) {
       <dl class="kv" style="margin-top:10px">
         <dt>${t('l2l.tg')}</dt><dd id="l2l-tg">${tg.linked ? `<span class="badge ok">${t('l2l.tg.on')}</span> <button class="copy" type="button" id="l2l-tg-off">${t('l2l.tg.off')}</button>`
           : tg.bot ? `<button class="btn sm" type="button" id="l2l-tg-link">${t('l2l.tg.link')}</button>` : `<span class="mute small">${t('l2l.tg.none')}</span>`}</dd>
-        <dt>${t('node.op')}</dt><dd><a href="${MEMPOOL_ORIGIN}/${lang() === 'es' ? 'es/' : ''}lightning/directory?node=${esc(me.pubkey)}" rel="noopener">${t('node.op.edit')} ↗</a></dd>
+        <dt>${t('node.op')}</dt><dd><a href="/card" data-link>${t('node.op.edit')} ✎</a></dd>
       </dl>
       <div class="l2l-row"><a class="btn ghost sm" href="/node/${esc(me.pubkey)}" data-link>${t('l2l.myrep')}</a>
       <button class="btn ghost sm" type="button" id="l2l-logout">${t('l2l.logout')}</button></div>${msgBox('l2l-me-msg')}`;
@@ -138,27 +138,29 @@ export function initL2L(h) {
     return `<div class="tablewrap"><table><thead><tr><th>${t('l2l.col.ring')}</th><th>${t('l2l.col.state')}</th><th>${t('l2l.col.members')}</th>
       <th class="r">${t('l2l.col.cap')}</th><th class="hide-m">${t('l2l.col.req')}</th><th class="r">${t('l2l.col.when')}</th></tr></thead><tbody>
       ${list.map((r) => {
-        const when = r.state === 'open' ? [t('l2l.fillby'), r.fill_deadline] : r.state === 'opening' ? [t('l2l.openby'), r.open_deadline] : [t('l2l.created'), r.created_at];
+        const when = r.state === 'open' ? [t('l2l.dl.fill'), r.fill_deadline] : r.state === 'opening' ? [t('l2l.dl.open'), r.open_deadline] : [t('l2l.created'), r.created_at];
         return `<tr><td><a class="mono" href="/l2l/ring/${esc(r.id)}" data-link>${esc(r.id)}</a></td><td>${stateBadge(r.state)}</td>
         <td><span class="num">${r.members.length}/${r.size}</span> <span class="small">${r.members.map((pk) => nodeLink(pk, nodes[pk]?.alias || undefined)).join(', ')}</span></td>
-        <td class="r num">${cap(r.capacity)}</td><td class="small hide-m">${reqSummary(r.req)}</td>
+        <td class="r num">${cap(r.capacity)}<div class="small dim">${esc(t('l2l.commit.short', { n: r.commit_days || 30 }))}</div></td><td class="small hide-m">${reqSummary(r.req)}</td>
         <td class="r small nowrap" title="${esc(msDate(when[1]))}">${esc(when[0])} ${esc(msAgo(when[1]))}</td></tr>`;
       }).join('')}</tbody></table></div>`;
   }
   function createForm() {
     const L = cfg.limits || {}; const D = cfg.defaults || {};
     const opt = (from, to, sel) => Array.from({ length: to - from + 1 }, (_, i) => from + i).map((v) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${v}</option>`).join('');
+    const field = (key, control, wide = false) => `<label class="${wide ? 'wide' : ''}"><span>${t(`l2l.f.${key}`)}</span>${control}<small class="l2l-hint">${t(`l2l.f.${key}.h`)}</small></label>`;
     return `<section class="section card"><h2>${t('l2l.create')}</h2><p class="small mute">${t('l2l.create.s')}</p>
       <form id="l2l-create" class="l2l-form" autocomplete="off">
-        <label>${t('l2l.f.size')}<select name="size">${opt(L.minSize || 2, L.maxSize || 5, D.size || 3)}</select></label>
-        <label>${t('l2l.f.cap')}<input type="number" name="capacity" min="${L.minCapacity || 20000}" max="${L.maxCapacity || 1e9}" step="1" required placeholder="1000000"></label>
-        <label>${t('l2l.f.open')}<select name="open_days">${opt(1, L.maxOpenDays || 14, D.open_days || 3)}</select></label>
-        <label>${t('l2l.f.fill')}<select name="fill_days">${opt(1, L.maxFillDays || 30, D.fill_days || 7)}</select></label>
-        <label>${t('l2l.f.minch')}<input type="number" name="min_channels" min="0" step="1" placeholder="0"></label>
-        <label>${t('l2l.f.mincap')}<input type="number" name="min_capacity" min="0" step="1" placeholder="0"></label>
-        <label>${t('l2l.f.minage')}<input type="number" name="min_age_days" min="0" step="1" placeholder="0"></label>
-        <label>${t('l2l.f.minscore')}<input type="number" name="min_score" min="0" max="100" step="1" placeholder="0"></label>
-        <label class="wide">${t('l2l.f.note')}<textarea name="note" rows="2" maxlength="${L.note || 280}"></textarea></label>
+        ${field('size', `<select name="size">${opt(L.minSize || 2, L.maxSize || 5, D.size || 3)}</select>`)}
+        ${field('cap', `<input type="number" name="capacity" min="${L.minCapacity || 20000}" max="${L.maxCapacity || 1e9}" step="1" required placeholder="1000000">`)}
+        ${field('open', `<select name="open_days">${opt(1, L.maxOpenDays || 14, D.open_days || 3)}</select>`)}
+        ${field('fill', `<select name="fill_days">${opt(1, L.maxFillDays || 30, D.fill_days || 7)}</select>`)}
+        ${field('commit', `<input type="number" name="commit_days" min="${L.minCommitDays || 7}" max="${L.maxCommitDays || 365}" step="1" value="${D.commit_days || 30}" required>`)}
+        ${field('minch', '<input type="number" name="min_channels" min="0" step="1" placeholder="0">')}
+        ${field('mincap', '<input type="number" name="min_capacity" min="0" step="1" placeholder="0">')}
+        ${field('minage', '<input type="number" name="min_age_days" min="0" step="1" placeholder="0">')}
+        ${field('minscore', '<input type="number" name="min_score" min="0" max="100" step="1" placeholder="0">')}
+        ${field('note', `<textarea name="note" rows="2" maxlength="${L.note || 280}"></textarea>`, true)}
         <div class="wide"><button class="btn" type="submit">${t('l2l.create.go')}</button></div>
       </form>${msgBox('l2l-create-msg')}</section>`;
   }
@@ -200,14 +202,14 @@ export function initL2L(h) {
     const deadline = g.state === 'open' ? [t('l2l.fillby'), g.fill_deadline] : [t('l2l.openby'), g.open_deadline];
     const asg = g.assignments || [];
     const statusTag = (a) => `<span class="ktag ${a.status === 'opened' ? 'k-down' : a.status === 'missed' ? 'k-off' : 'k-chg'}">${esc(t(`l2l.as.${a.status}`))}</span>`;
-    const chanInfo = (c) => (c ? ` <a class="mono small" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> <span class="small dim" title="${esc(t(`l2l.proof.${c.proof}.s`))}">· ${esc(t(`l2l.proof.${c.proof}`))}</span>${c.closed_at ? ` <span class="ktag k-off">${esc(t(c.early ? 'l2l.closed.early' : 'l2l.closed'))}${c.close_type === 'force' ? ` · ${esc(t('l2l.closed.force'))}` : ''}</span>` : ''}` : '');
+    const chanInfo = (c) => (c ? ` <a class="mono small" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> <span class="small dim" title="${esc(t(`l2l.proof.${c.proof}.s`))}">· ${esc(t(`l2l.proof.${c.proof}`))}</span>${c.closed_at ? ` <span class="ktag ${c.penalty ? 'k-off' : 'k-chg'}">${esc(t(c.early ? 'l2l.closed.early' : 'l2l.closed'))}${c.close_type === 'force' ? ` · ${esc(t('l2l.closed.force'))}` : c.close_type === 'mutual' ? ` · ${esc(t('l2l.closed.coop'))}` : ''}</span>` : ''}${c.penalty ? ` <span class="ktag ${c.penalty.status === 'confirmed' ? 'k-off' : c.penalty.status === 'pending' ? 'k-up' : 'k-down'}" title="${esc(t('l2l.pen.s'))}">${esc(t(`l2l.pen.${c.penalty.status}${c.penalty.expired ? '.exp' : ''}`))}</span>` : ''}` : '');
     app.innerHTML = `<p class="small"><a href="/l2l" data-link>← Lightning2Lightning</a></p>
       <h1>${t('l2l.ring')} <span class="mono">${esc(g.id)}</span> ${stateBadge(g.state)}</h1>
       <div class="grid stats">
         <div class="stat"><div class="k">${t('l2l.col.cap')}</div><div class="v">${cap(g.capacity)}</div><div class="s">${t('l2l.cap.s')}</div></div>
         <div class="stat"><div class="k">${t('l2l.col.members')}</div><div class="v">${g.members.length}/${g.size}</div><div class="s">${t('l2l.byx', { a: nodeLink(g.creator, nodes[g.creator]?.alias || undefined) })}</div></div>
-        <div class="stat"><div class="k">${esc(deadline[0])}</div><div class="v small">${esc(msDate(deadline[1]))}</div><div class="s">${esc(msAgo(deadline[1]))}</div></div>
-        <div class="stat"><div class="k">${t('l2l.f.open')}</div><div class="v">${nf(g.open_days)}</div><div class="s">${t('l2l.keep', { n: g.min_lifetime_days })}</div></div>
+        <div class="stat"><div class="k">${esc(deadline[0])}</div><div class="v small">${esc(msDate(deadline[1]))}</div><div class="s">${esc(msAgo(deadline[1]))} · ${esc(t('l2l.opendays', { n: g.open_days }))}</div></div>
+        <div class="stat"><div class="k">${t('l2l.commit')}</div><div class="v">${nf(g.min_lifetime_days || 30)} <small class="dim">${t('l2l.days')}</small></div><div class="s">${t('l2l.commit.s')}</div></div>
       </div>
       ${g.note ? `<div class="card section"><p class="l2l-text">${esc(g.note)}</p></div>` : ''}
       <div class="grid cols2 section">
@@ -227,7 +229,7 @@ export function initL2L(h) {
     } else if (g.state === 'open') {
       if (m.member) box.innerHTML = `<p class="small ok">${t('l2l.you.in')}</p>${m.creator ? button('cancel', t('l2l.cancel'), 'btn ghost sm') : button('leave', t('l2l.leave'), 'btn ghost sm')}`;
       else if (m.unmet?.length) box.innerHTML = `<p class="small err">${t('l2l.you.unmet')}</p><ul class="small">${m.unmet.map((u) => `<li>${esc(unmetText(u))}</li>`).join('')}</ul>`;
-      else box.innerHTML = button('join', t('l2l.join'));
+      else box.innerHTML = `<p class="small">${esc(t('l2l.join.s', { cap: cap(g.capacity), days: g.open_days, commit: g.min_lifetime_days || 30 }))}</p>${button('join', t('l2l.join'))}`;
     } else if (m.mine && g.state === 'opening' && m.mine.status === 'pending') {
       const peer = m.mine.to;
       const c1 = `lncli connect ${m.mine.uri}`;
@@ -239,16 +241,25 @@ export function initL2L(h) {
     } else if (m.mine) {
       box.innerHTML = `<p class="small">${t('l2l.you.status', { s: esc(t(`l2l.as.${m.mine.status}`)) })}</p>`;
     }
+    if (m?.penalties?.length) {
+      box.insertAdjacentHTML('beforeend', m.penalties.map((p) => `<div class="note l2l-pen"><p class="small">${t('l2l.pen.ask', { a: nodeLink(p.from, nodes[p.from]?.alias || undefined), sid: esc(p.short_id), when: esc(msDate(p.until)) })}</p>
+        <div class="l2l-row"><button class="btn sm" type="button" data-penalty="${esc(p.channel)}" data-accept="1">${t('l2l.pen.apply')}</button>
+        <button class="btn ghost sm" type="button" data-penalty="${esc(p.channel)}" data-accept="0">${t('l2l.pen.forgive')}</button></div></div>`).join(''));
+    }
     if (m?.confirmable?.length) {
       box.insertAdjacentHTML('beforeend', `<div class="note"><p class="small">${t('l2l.confirm.s')}</p>${m.confirmable.map((c) => `<div class="l2l-row"><a class="mono small" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> <span class="small">${cap(c.capacity)}</span> <button class="btn ghost sm" type="button" data-confirm="${esc(c.id)}">${t('l2l.confirm')}</button></div>`).join('')}</div>`);
     }
     box.addEventListener('click', async (e) => {
-      const b = e.target.closest('[data-act],[data-confirm]');
+      const b = e.target.closest('[data-act],[data-confirm],[data-penalty]');
       if (!b) return;
       if (b.dataset.act === 'cancel' && !confirm(t('l2l.cancel.q'))) return;
+      if (b.dataset.act === 'join' && !confirm(t('l2l.join.q', { cap: cap(g.capacity), days: g.open_days, commit: g.min_lifetime_days || 30 }))) return;
       b.disabled = true;
       try {
-        if (b.dataset.confirm) await act('POST', `/l2l/rings/${g.id}/confirm`, { channel: b.dataset.confirm });
+        if (b.dataset.penalty) {
+          if (!confirm(t(b.dataset.accept === '1' ? 'l2l.pen.apply.q' : 'l2l.pen.forgive.q'))) { b.disabled = false; return; }
+          await act('POST', `/l2l/rings/${g.id}/penalty`, { channel: b.dataset.penalty, accept: b.dataset.accept === '1' });
+        } else if (b.dataset.confirm) await act('POST', `/l2l/rings/${g.id}/confirm`, { channel: b.dataset.confirm });
         else await act('POST', `/l2l/rings/${g.id}/${b.dataset.act}`);
         pageRing(g.id);
       } catch (err) { b.disabled = false; say('ring-msg', errText(err)); }
@@ -270,6 +281,66 @@ export function initL2L(h) {
     }
   }
 
+  // ---------- the operator card editor (same API and checks as the mempool directory) ----------
+  const CONTACTS = ['telegram', 'nostr', 'email', 'website', 'lightning_address', 'x', 'discord', 'simplex'];
+  async function pageCard() {
+    setNav(''); setTitle(t('card.title'));
+    await loadCfg();
+    let d;
+    try { d = await req('GET', '/me'); } catch { d = { logged_in: false }; }
+    if (!d.logged_in) {
+      app.innerHTML = `<h1>${t('card.title')}</h1><p class="mute">${t('card.sub')}</p><div class="grid cols2"><div class="card" id="l2l-me"></div></div>`;
+      me = null;
+      renderMe(document.getElementById('l2l-me'));
+      return;
+    }
+    const e = d.entry || {}; const c = e.contacts || {};
+    const input = (name, val, attrs = '') => `<input type="text" name="${name}" value="${esc(val ?? '')}" ${attrs}>`;
+    const field = (key, control, wide = false) => `<label class="${wide ? 'wide' : ''}" data-field="${key}"><span>${t(`card.f.${key}`)}</span>${control}<small class="l2l-hint">${t(`card.f.${key}.h`)}</small></label>`;
+    app.innerHTML = `<p class="small"><a href="/node/${esc(d.pubkey)}" data-link>← ${esc(d.alias || d.pubkey.slice(0, 16))}</a></p>
+      <h1>${t('card.title')}</h1><p class="mute">${t(d.entry ? 'card.sub.edit' : 'card.sub.new', { a: esc(d.alias || d.pubkey.slice(0, 16)) })}</p>
+      <section class="card"><form id="card-form" class="l2l-form" autocomplete="off">
+        ${field('name', input('name', e.name, 'maxlength="40"'))}
+        ${field('tags', input('tags', (e.tags || []).join(', '), 'maxlength="140"'))}
+        ${field('min_channel_size', `<input type="number" name="min_channel_size" min="0" step="1" value="${esc(e.min_channel_size ?? '')}">`)}
+        ${field('description', `<textarea name="description" rows="4" maxlength="500">${esc(e.description || '')}</textarea>`, true)}
+        <div class="wide"><h3>${t('card.contacts')}</h3><p class="small mute">${t('card.contacts.s')}</p></div>
+        ${CONTACTS.map((k) => field(k, input(`c.${k}`, c[k], `maxlength="${k === 'simplex' ? 1000 : 200}"`))).join('')}
+        <div class="wide l2l-row"><button class="btn" type="submit" id="card-save">${t('card.save')}</button>
+          ${d.entry ? `<button class="btn ghost sm" type="button" id="card-delete">${t('card.delete')}</button>` : ''}
+          <a class="small" href="/node/${esc(d.pubkey)}" data-link>${t('card.view')}</a></div>
+      </form>${msgBox('card-msg')}</section>`;
+    const form = document.getElementById('card-form');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      form.querySelectorAll('.bad').forEach((x) => x.classList.remove('bad'));
+      const f = new FormData(form); const entry = {}; const contacts = {};
+      const v = (k) => String(f.get(k) || '').trim();
+      if (v('name')) entry.name = v('name');
+      if (String(f.get('description') || '').trim()) entry.description = String(f.get('description'));
+      const tags = v('tags').split(',').map((x) => x.trim()).filter(Boolean);
+      if (tags.length) entry.tags = tags;
+      if (v('min_channel_size')) entry.min_channel_size = Number(v('min_channel_size'));
+      for (const k of CONTACTS) if (v(`c.${k}`)) contacts[k] = v(`c.${k}`);
+      if (Object.keys(contacts).length) entry.contacts = contacts;
+      try {
+        const r = await req('PUT', '/card', { entry }, d.csrf);
+        h.resetDir();
+        say('card-msg', t(`card.saved.${r.result}`), true);
+        if (r.result === 'new') setTimeout(() => pageCard(), 800);
+      } catch (err) {
+        const fld = err.data?.field;
+        const lab = fld && form.querySelector(`[data-field="${CSS.escape(fld)}"]`);
+        if (lab) { lab.classList.add('bad'); lab.querySelector('input,textarea')?.focus(); }
+        say('card-msg', err.code === 'bad_entry' ? `${lab ? lab.querySelector('span').textContent : fld}: ${err.data.reason}` : errText(err));
+      }
+    });
+    document.getElementById('card-delete')?.addEventListener('click', async () => {
+      if (!confirm(t('card.delete.q'))) return;
+      try { await req('DELETE', '/card', undefined, d.csrf); h.resetDir(); say('card-msg', t('card.deleted'), true); setTimeout(() => pageCard(), 800); } catch (err) { say('card-msg', errText(err)); }
+    });
+  }
+
   // ---------- reputation on node pages ----------
   const nodeCardShell = () => `<section class="section card" id="l2l-rep"><h2>${t('l2l.rep')} <a href="/l2l" data-link>Lightning2Lightning →</a></h2><div class="loading">${t('loading')}</div></section>`;
   async function fillNodeCard(pk) {
@@ -282,7 +353,7 @@ export function initL2L(h) {
       return `<li><span>${esc(label)}</span><span class="val num ${p.pts > 0 && p.k !== 'base' ? 'l2l-pos' : p.pts < 0 ? 'l2l-neg' : ''}">${p.k === 'base' ? '' : p.pts > 0 ? '+' : ''}${nf(p.pts)}</span></li>`;
     };
     const ringLine = (x) => `<li><span><a class="mono" href="/l2l/ring/${esc(x.id)}" data-link>${esc(x.id)}</a> ${stateBadge(x.state)} <span class="small">${cap(x.capacity)}</span></span>
-      <span class="small">${x.to ? `→ ${nodeLink(x.to, r.nodes[x.to]?.alias || undefined)}: ${esc(t(`l2l.as.${x.status}`))}${x.channel?.short_id ? ` <span class="mono">${esc(x.channel.short_id)}</span>` : ''}${x.channel?.early ? ` <span class="ktag k-off">${esc(t('l2l.closed.early'))}</span>` : ''}${x.channel?.close_type === 'force' ? ` <span class="ktag k-off">${esc(t('l2l.closed.force'))}</span>` : ''}` : `<span class="dim">${t('l2l.waiting')}</span>`}</span></li>`;
+      <span class="small">${x.to ? `→ ${nodeLink(x.to, r.nodes[x.to]?.alias || undefined)}: ${esc(t(`l2l.as.${x.status}`))}${x.channel?.short_id ? ` <span class="mono">${esc(x.channel.short_id)}</span>` : ''}${x.channel?.closed_at ? ` <span class="ktag k-chg">${esc(t(x.channel.early ? 'l2l.closed.early' : 'l2l.closed'))}</span>` : ''}${x.channel?.penalty ? ` <span class="ktag ${x.channel.penalty === 'confirmed' ? 'k-off' : 'k-down'}">${esc(t(`l2l.pen.${x.channel.penalty}`))}</span>` : ''}` : `<span class="dim">${t('l2l.waiting')}</span>`}</span></li>`;
     el.innerHTML = `<h2>${t('l2l.rep')} <a href="/l2l" data-link>Lightning2Lightning →</a></h2>
       <div class="grid cols3">
         <div><div class="l2l-big">${scoreBadge(r.score)}<span class="dim">/100</span></div><ul class="feed l2l-parts">${r.parts.map(part).join('')}</ul>
@@ -295,7 +366,7 @@ export function initL2L(h) {
 
   let route = () => {};
   return {
-    pageL2L, pageRing, nodeCardShell, fillNodeCard,
+    pageL2L, pageRing, pageCard, nodeCardShell, fillNodeCard,
     setRoute(fn) { route = fn; },
     resetSession() { me = null; },
   };
