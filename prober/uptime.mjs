@@ -1,75 +1,20 @@
-// Nodex uptime prober. Runs on the host (it needs the local Tor SOCKS port) from a systemd
-// user timer every 10 minutes: tries a TCP connection to every address a node announces
-// (.onion through Tor) and records whether at least one answered.
-//   data/uptime.json  { since, generated, nodes: { pk: { days: { 'YYYY-MM-DD': [up, tries] }, recent: '1101…', last, last_up } } }
-// recent holds the last 144 probes (24 h), oldest first; days are kept for 90 days.
+// Nodex uptime prober. Runs on the host (it needs the local Tor SOCKS port and the AirVPN tunnel)
+// from a systemd user timer every 10 minutes: probes every address a node announces with
+// lnprobe.mjs (.onion through Tor; IPv4/IPv6 only out of AirVPN, never from the home line, fail
+// closed; private addresses never) including the BOLT 8 act one/two that proves the node's key.
+//   data/uptime.json  { since, generated, egress, nodes: { pk: {
+//       days: { 'YYYY-MM-DD': [up, tries] }, recent: '1101…', last, last_up,      <- "any address answered"
+//       net:   { tor|ipv4|ipv6: { ok, hs, last_try, last_ok, last_hs } },          <- per network, this round
+//       addrs: { '<socket>': { net, ok, hs, reason, via, last_try, last_ok, last_hs } } } } }
+// recent holds the last 144 probes (24 h), oldest first; days are kept for 90 days. A node whose
+// addresses could not be tested at all this round (tunnel or Tor down) gets no tick, not a "down".
 import fs from 'node:fs';
-import net from 'node:net';
-import dns from 'node:dns/promises';
 import path from 'node:path';
+import { probeNode } from './lnprobe.mjs';
 
 const DATA_DIR = process.env.DATA_DIR || new URL('../data', import.meta.url).pathname;
-const SOCKS = { host: '127.0.0.1', port: 9050 };
 const KEEP_DAYS = 90, RECENT = 144, CONCURRENCY = 8;
-
-function tcp(host, port, ms) {
-  return new Promise((ok) => {
-    const s = net.connect({ host, port });
-    const done = (v) => { s.destroy(); ok(v); };
-    s.setTimeout(ms, () => done(false));
-    s.once('connect', () => done(true));
-    s.once('error', () => done(false));
-  });
-}
-
-// Minimal SOCKS5 CONNECT by hostname; resolves true once Tor reports the circuit connected.
-function socks(host, port, ms) {
-  return new Promise((ok) => {
-    const s = net.connect(SOCKS);
-    let stage = 0;
-    const done = (v) => { s.destroy(); ok(v); };
-    s.setTimeout(ms, () => done(false));
-    s.once('error', () => done(false));
-    s.once('connect', () => s.write(Buffer.from([5, 1, 0])));
-    s.on('data', (b) => {
-      if (stage === 0) {
-        if (b[0] !== 5 || b[1] !== 0) return done(false);
-        const h = Buffer.from(host);
-        s.write(Buffer.concat([Buffer.from([5, 1, 0, 3, h.length]), h, Buffer.from([port >> 8, port & 255])]));
-        stage = 1;
-      } else done(b[0] === 5 && b[1] === 0);
-    });
-  });
-}
-
-function parse(sock) {
-  const m = sock.match(/^\[?([^\]]+?)\]?:(\d+)$/);
-  return m ? { host: m[1], port: Number(m[2]) } : null;
-}
-
-// Anyone can announce any address, so never let a node make us knock on our own LAN:
-// only public unicast IPs are probed directly (hostnames are resolved first), .onion goes via Tor.
-const BLOCKED = new net.BlockList();
-for (const [a, b] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
-  ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]]) BLOCKED.addSubnet(a, b, 'ipv4');
-for (const [a, b] of [['::', 127], ['64:ff9b::', 96], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]]) BLOCKED.addSubnet(a, b, 'ipv6');
-async function publicIp(host) {
-  let ip = host;
-  if (!net.isIP(host)) { try { ip = (await dns.lookup(host)).address; } catch { return null; } }
-  return BLOCKED.check(ip, net.isIPv6(ip) ? 'ipv6' : 'ipv4') ? null : ip;
-}
-
-async function probe(sockets) {
-  for (const s of sockets) {
-    const a = parse(s);
-    if (!a || a.port < 1 || a.port > 65535) continue;
-    let up = false;
-    if (a.host.endsWith('.onion')) up = await socks(a.host, a.port, 60000);
-    else { const ip = await publicIp(a.host); if (ip) up = await tcp(ip, a.port, 15000); }
-    if (up) return true;
-  }
-  return false;
-}
+const OPTS = { torTimeout: 60000, clearTimeout: 15000 };
 
 const graph = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'graph.json'), 'utf8'));
 const file = path.join(DATA_DIR, 'uptime.json');
@@ -80,22 +25,50 @@ const targets = graph.nodes.filter((n) => n.sockets?.length);
 const results = new Map();
 let i = 0;
 await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
-  while (i < targets.length) { const n = targets[i++]; results.set(n.pk, await probe(n.sockets)); }
+  while (i < targets.length) { const n = targets[i++]; results.set(n.pk, await probeNode(n.pk, n.sockets, OPTS)); }
 }));
 
 const now = Math.floor(Date.now() / 1000);
 const day = new Date(now * 1000).toISOString().slice(0, 10);
 const oldest = new Date((now - KEEP_DAYS * 86400) * 1000).toISOString().slice(0, 10);
-for (const [pk, up] of results) {
+let up = 0, skipped = 0, unavailable = 0;
+for (const [pk, res] of results) {
   const e = (db.nodes[pk] ||= { days: {}, recent: '' });
+  // per address
+  const addrs = {};
+  for (const r of res) {
+    const o = e.addrs?.[r.address] || {};
+    const x = { net: r.network, ok: r.ok, hs: r.handshake, reason: r.reason || undefined, via: r.via, last_try: o.last_try, last_ok: o.last_ok, last_hs: o.last_hs };
+    if (r.ok !== null) x.last_try = now;
+    if (r.ok) x.last_ok = now;
+    if (r.handshake) x.last_hs = now;
+    if (String(r.reason || '').startsWith('unavailable')) unavailable++;
+    addrs[r.address] = x;
+  }
+  e.addrs = addrs; // addresses no longer announced drop out
+  // per network
+  const net = {};
+  for (const x of Object.values(addrs)) {
+    if (!['tor', 'ipv4', 'ipv6'].includes(x.net)) continue;
+    const n = (net[x.net] ||= { ok: null, hs: null, last_try: undefined, last_ok: undefined, last_hs: undefined });
+    if (x.ok === true) n.ok = true; else if (x.ok === false && n.ok !== true) n.ok = false;
+    if (x.hs === true) n.hs = true; else if (x.hs === false && n.hs !== true) n.hs = false;
+    for (const k of ['last_try', 'last_ok', 'last_hs']) if (x[k] && !(n[k] >= x[k])) n[k] = x[k];
+  }
+  e.net = net;
+  // "any address answered" (unchanged meaning), but no tick when nothing could be tested
+  const tested = res.some((r) => r.ok !== null || r.reason === 'blocked_private' || r.reason === 'bad_address' || r.reason === 'dns_failed');
+  const isUp = res.some((r) => r.ok === true);
+  if (!tested && res.some((r) => /^unavailable|tor_not_running/.test(r.reason || ''))) { skipped++; continue; }
   const d = (e.days[day] ||= [0, 0]);
-  d[0] += up ? 1 : 0; d[1] += 1;
-  e.recent = (e.recent + (up ? '1' : '0')).slice(-RECENT);
+  d[0] += isUp ? 1 : 0; d[1] += 1;
+  e.recent = (e.recent + (isUp ? '1' : '0')).slice(-RECENT);
   e.last = now;
-  if (up) e.last_up = now;
+  if (isUp) { e.last_up = now; up++; }
   for (const k of Object.keys(e.days)) if (k < oldest) delete e.days[k];
 }
+db.egress = 'tor+airvpn';
 db.generated = now;
 fs.writeFileSync(file + '.tmp', JSON.stringify(db));
 fs.renameSync(file + '.tmp', file);
-console.log(`probed ${results.size}, up ${[...results.values()].filter(Boolean).length}`);
+console.log(`probed ${results.size}, up ${up}, no tick ${skipped}, clearnet unavailable (tunnel) ${unavailable}`);

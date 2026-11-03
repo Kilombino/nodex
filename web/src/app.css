@@ -408,3 +408,15 @@ body:has(.act4) .wrap { max-width: 1720px; }
 .l2l-pen { margin-top: 10px; }
 .l2l-mycard.opcard { background: none; border: 0; box-shadow: none; clip-path: none; padding: 0; margin: 8px 0 0; }
 .l2l-mycard.opcard::before, .l2l-mycard.opcard::after { display: none; }
+/* Ping / reachability */
+.addr .ping { flex: none; }
+.addr .ping:disabled { opacity: .6; cursor: wait; }
+.pingres { font-size: .78rem; flex: 1 1 auto; min-width: 0; }
+.pr.ok, .reach .good { color: var(--acc); }
+.pr.warn, .reach .warn { color: var(--acc2); }
+.pr.bad, .reach .bad { color: var(--bad); }
+.reach { margin-top: 8px; }
+.reach:empty { display: none; }
+.reachline { font-size: .85rem; margin-bottom: 2px; }
+.reachline code { font-family: var(--mono); font-size: .78rem; word-break: break-all; font-weight: 400; }
+.reach p { margin: 4px 0 0; }

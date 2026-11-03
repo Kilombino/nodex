@@ -187,10 +187,87 @@ function copyBtn(text, label = t('node.copy')) {
 }
 // One announced address as a full connection string, pubkey@host:port, ready to paste into
 // `lncli connect` / `openchannel`. The pubkey part is shortened on screen, copied whole.
+// "Ping" checks every announced address of the node (ln-directory /ping/<pk>); the result of each
+// address goes in its .pingres, the verdict for opening a channel in #reach.
 function addrRow(pk, s) {
   const kind = s.includes('.onion') ? 'Tor' : s.startsWith('[') ? 'IPv6' : 'IPv4';
-  return `<div class="addr"><span class="badge ${kind === 'Tor' ? 'tor' : 'net'}">${kind}</span><code title="${esc(`${pk}@${s}`)}"><span class="dim">${esc(pk.slice(0, 8))}…@</span>${esc(s)}</code>${copyBtn(`${pk}@${s}`, t('node.copyuri'))}</div>`;
+  return `<div class="addr"><span class="badge ${kind === 'Tor' ? 'tor' : 'net'}">${kind}</span><code title="${esc(`${pk}@${s}`)}"><span class="dim">${esc(pk.slice(0, 8))}…@</span>${esc(s)}</code>${copyBtn(`${pk}@${s}`, t('node.copyuri'))}<button class="copy ping" type="button" data-ping="${esc(pk)}" title="${esc(t('ping.title'))}">${t('ping.btn')}</button><span class="pingres" data-sock="${esc(s)}"></span></div>`;
 }
+const NETNAME = { tor: 'Tor', ipv4: 'IPv4', ipv6: 'IPv6', dns: 'DNS' };
+function reasonText(r) {
+  const x = String(r || '');
+  if (x.startsWith('unavailable')) return t('ping.r.unavailable');
+  if (x.startsWith('handshake')) return t('ping.r.handshake');
+  if (/^tor_error/.test(x)) return t('ping.r.tor');
+  const k = `ping.r.${x}`;
+  return DICT[lang][k] ? t(k) : x;
+}
+// One address: ✅ handshake / ⚠️ port only / ❌ down / — not tested
+function addrResult(r) {
+  const via = r.via === 'tor' ? ` · ${t('ping.viator')}` : '';
+  const ms = r.ms != null ? `${t('ping.ms', { ms: r.ms })} · ` : '';
+  if (r.ok === true && r.handshake === true) return `<span class="pr ok">✅ ${ms}${t('ping.hs')}${via}</span>`;
+  if (r.ok === true) return `<span class="pr warn">⚠️ ${ms}${t('ping.tcponly')}${via}</span>`;
+  if (r.ok === false) return `<span class="pr bad">❌ ${t('ping.down')}: ${esc(reasonText(r.reason))}${via}</span>`;
+  return `<span class="pr dim">— ${t('ping.untested')}: ${esc(reasonText(r.reason))}</span>`;
+}
+// Verdict for someone about to open a channel, plus "Reachable: Tor ✓ · IPv4 ✗ · IPv6 —".
+function reachHtml(results, when) {
+  const tested = results.filter((r) => r.ok !== null);
+  const hsNets = [...new Set(tested.filter((r) => r.handshake === true).map((r) => NETNAME[r.network] || r.network))];
+  const down = tested.filter((r) => r.handshake !== true);
+  let line;
+  if (!tested.length) line = `<span class="dim">${t('reach.untestable')}</span>`;
+  else if (hsNets.length && !down.length) line = `<b class="good">${t('reach.ready', { nets: esc(hsNets.join(' · ')), n: tested.length })}</b>`;
+  else if (hsNets.length) line = `<b class="warn">${t('reach.partial', { nets: esc(hsNets.join(' · ')), k: down.length, n: tested.length, down: down.map((r) => `${NETNAME[r.network] || r.network} <code>${esc(r.address)}</code>`).join(', ') })}</b>`;
+  else if (tested.some((r) => r.ok)) line = `<b class="warn">${t('reach.tcponly')}</b>`;
+  else line = `<b class="bad">${t('reach.downall')}</b>`;
+  const per = {};
+  for (const r of results) {
+    if (!['tor', 'ipv4', 'ipv6'].includes(r.network)) continue;
+    const v = r.ok === true && r.handshake === true ? 2 : r.ok === true ? 1 : r.ok === false ? 0 : -1;
+    per[r.network] = Math.max(per[r.network] ?? -1, v);
+  }
+  const sym = (v) => (v === 2 ? '<span class="good">✓</span>' : v === 1 ? '<span class="warn">?</span>' : v === 0 ? '<span class="bad">✗</span>' : '<span class="dim">—</span>');
+  const nets = ['tor', 'ipv4', 'ipv6'].map((k) => `${NETNAME[k]} ${k in per ? sym(per[k]) : '<span class="dim">—</span>'}`).join(' · ');
+  return `<div class="reachline">${line}</div><div class="small"><span class="dim">${t('reach.label')}:</span> ${nets} <span class="dim">· ${esc(when)}</span></div>`;
+}
+function showReach(results, when) {
+  const box = document.getElementById('reach');
+  if (!box) return;
+  box.innerHTML = reachHtml(results, when) + `<p class="small dim">${t('reach.note')}</p>`;
+  for (const el of document.querySelectorAll('.pingres')) {
+    const r = results.find((x) => x.address === el.dataset.sock);
+    el.innerHTML = r ? addrResult(r) : '';
+  }
+}
+// Without pressing anything: the prober's last round (data/uptime.json, per address).
+function reachFromUptime(u, n) {
+  const e = u.nodes?.[n.pk];
+  if (!e?.addrs || !n.sockets?.length) return;
+  const results = n.sockets.filter((s) => e.addrs[s]).map((s) => { const x = e.addrs[s]; return { address: s, network: x.net, ok: x.ok, handshake: x.hs, reason: x.reason, via: x.via }; });
+  if (results.length) showReach(results, t('reach.last', { ago: ago(e.last || u.generated) }));
+}
+let pinging = false;
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-ping]');
+  if (!b || pinging) return;
+  pinging = true;
+  const btns = [...document.querySelectorAll('[data-ping]')];
+  for (const x of btns) { x.disabled = true; x.textContent = t('ping.running'); }
+  try {
+    const r = await fetch(`/api/ln-directory/ping/${encodeURIComponent(b.dataset.ping)}`, { headers: { Accept: 'application/json' } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
+    showReach(j.results, j.cached ? t('reach.cached', { ago: ago(j.checked_at) }) : t('reach.now'));
+  } catch (err) {
+    const box = document.getElementById('reach');
+    if (box) box.insertAdjacentHTML('afterbegin', `<div class="bad small">${esc(t('reach.err', { msg: err.message }))}</div>`);
+  } finally {
+    pinging = false;
+    for (const x of btns) { x.disabled = false; x.textContent = t('ping.btn'); }
+  }
+});
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-copy]');
   if (!b) return;
@@ -475,7 +552,7 @@ async function pageNode(pk) {
   <div class="grid cols2">
     <div class="card">
       <dl class="kv">
-        <dt>${t('node.addresses')}</dt><dd>${sock.length ? sock.map((s) => addrRow(pk, s)).join('') : `<span class="mute">${t('node.noaddr')}</span>`}</dd>
+        <dt>${t('node.addresses')}</dt><dd>${sock.length ? sock.map((s) => addrRow(pk, s)).join('') + '<div id="reach" class="reach"></div>' : `<span class="mute">${t('node.noaddr')}</span>`}</dd>
         <dt>${t('node.firstseen')}</dt><dd>${dateStr(n.first_seen, true)} <span class="dim">(${esc(ago(n.first_seen))})</span></dd>
         <dt>${t('node.updated')}</dt><dd>${dateStr(n.updated, true)} <span class="dim">(${esc(ago(n.updated))})</span></dd>
         ${n.city || n.country ? `<dt>${t('node.location')}</dt><dd>${esc([n.city, lang === 'es' ? (n.country_es || n.country) : n.country].filter(Boolean).join(', '))}</dd>` : ''}
@@ -512,6 +589,7 @@ async function pageNode(pk) {
     if (!el) return;
     el.className = '';
     el.innerHTML = uptimeCard(u, n);
+    if (!document.querySelector('#reach .reachline')) reachFromUptime(u, n);
   });
 
   api(`/nodes/${pk}/statistics`).then((s) => {
