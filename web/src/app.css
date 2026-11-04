@@ -361,6 +361,7 @@ th.sort.on { color: var(--acc2); }
 .ktag.k-off { color: var(--dim); border-color: var(--line); }
 .ktag.k-on, .ktag.k-chg { color: var(--link); border-color: var(--line); }
 .ktag.k-splice { color: #c9a6ff; border-color: rgba(201, 166, 255, .5); box-shadow: 0 0 8px rgba(201, 166, 255, .2); white-space: nowrap; }
+.ktag.k-pending { border-style: dashed; box-shadow: none; }
 .badge.splice { color: #c9a6ff; border-color: rgba(201, 166, 255, .45); }
 /* Activity: new channels, closed channels, splices and fee changes side by side on wide screens
    (the page gets more width than the rest), two by two on medium ones, stacked on phones. */

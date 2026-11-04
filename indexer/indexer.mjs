@@ -15,9 +15,13 @@
 // the transaction that spends a closed channel's funding output is itself the funding of
 // another channel between the same two nodes, it was a splice: graph.json links the two
 // (`splices` on the surviving channel, `splice_next` for the old ids, `splice_log`).
+// Until the new channel is announced (LND waits 36 confirmations, then ~6 more), a spend that
+// looks like a splice (splice.mjs) is listed in `splice_pending`, not in `closed_log`, for up
+// to SPLICE_WINDOW blocks.
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { classifySpend, pendingState, SPLICE_WINDOW } from './splice.mjs';
 
 const API = (process.env.API_BASE || 'http://mempool-api:8999/api/v1/lightning').replace(/\/+$/, '');
 const DATA_DIR = process.env.DATA_DIR || '/data';
@@ -253,6 +257,28 @@ async function run() {
     if (!nxt || nxt.id === c.id || pair(nxt.n1, nxt.n2) !== pair(c.n1, c.n2)) continue;
     prevOf[nxt.id] = c; splice_next[c.id] = { id: nxt.id, short_id: nxt.short_id, old_short_id: c.short_id };
   }
+  // Spent by something that looks like a splice but no new channel between the same nodes
+  // is in the graph yet: a splice waiting for its announcement, not a close (splice.mjs).
+  let tip = null;
+  try { tip = Number((await get('/blocks/tip/height', 3, TX_API)).json) || null; } catch { /* retried next run */ }
+  await pool(Object.values(closedCache).filter((c) => c.spent_by && !splice_next[c.id] && (!c.spend || !c.spend.height)), async (c) => {
+    const tx = (await get(`/tx/${c.spent_by}`, 3, TX_API)).json;
+    c.spend = { ...classifySpend(tx, c.txid, c.vout), height: tx.status?.block_height || null };
+  });
+  writeAtomic('closed.json', closedCache);
+  const splice_pending = [];
+  for (const c of Object.values(closedCache)) {
+    if (!c.spent_by || splice_next[c.id] || !c.spend?.splice) continue;
+    const st = tip ? pendingState(c.spend.height, tip) : { pending: true, confs: null };
+    if (!st.pending) continue;
+    splice_pending.push({
+      id: c.id, short_id: c.short_id, capacity: c.capacity, n1: c.n1, n2: c.n2, created: c.created,
+      t: c.closed_at || null, spent_by: c.spent_by, height: c.spend.height, confs: st.confs, window: SPLICE_WINDOW,
+      new_capacity: c.spend.out, delta: c.spend.out != null ? c.spend.out - c.capacity : null,
+    });
+  }
+  splice_pending.sort((a, b) => (b.t || 9e9) - (a.t || 9e9));   // unconfirmed first
+  const pendingIds = new Set(splice_pending.map((x) => x.id));
   const splice_log = [];
   const link = (c) => ({ id: c.id, short_id: c.short_id, capacity: c.capacity, created: c.created });
   for (const c of channels) {
@@ -326,6 +352,7 @@ async function run() {
     hybrid: Object.values(nodes).filter((n) => n.clearnet && n.tor).length,
     no_address: Object.values(nodes).filter((n) => !n.sockets.length).length,
     splices: splice_log.length,
+    splices_pending: splice_pending.length,
     backend: latest,
   };
 
@@ -374,12 +401,12 @@ async function run() {
   writeAtomic('history.json', { since: tracking, generated: now, changes: hist });
 
   // Channels that really closed (a splice is not a close), newest first.
-  const closed_log = Object.values(closedCache).filter((c) => !splice_next[c.id] && c.closed_at)
+  const closed_log = Object.values(closedCache).filter((c) => !splice_next[c.id] && !pendingIds.has(c.id) && c.closed_at)
     .sort((a, b) => b.closed_at - a.closed_at).slice(0, 100)
     .map((c) => ({ id: c.id, short_id: c.short_id, capacity: c.capacity, n1: c.n1, n2: c.n2, created: c.created, closed_at: c.closed_at }));
-  writeAtomic('graph.json', { generated: now, network, nodes: Object.values(nodes), channels, splice_next, splice_log, closed_log });
+  writeAtomic('graph.json', { generated: now, network, nodes: Object.values(nodes), channels, splice_next, splice_log, splice_pending, closed_log });
   writeAtomic('status.json', { running: false, started, finished: new Date().toISOString(), ok: true, history_since: tracking, nodes: network.nodes, channels: network.channels, changes: changes.length });
-  log(`ok: ${network.nodes} nodes, ${network.channels} channels, ${splice_log.length} splices, ${changes.length} policy changes`);
+  log(`ok: ${network.nodes} nodes, ${network.channels} channels, ${splice_log.length} splices (${splice_pending.length} pending), ${changes.length} policy changes`);
 }
 
 fs.mkdirSync(DATA_DIR, { recursive: true });

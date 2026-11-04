@@ -79,6 +79,12 @@ function splicePair(n1, n2, funder) {
   if (!funder) return `${nodeLink(n1)} ⇄ ${nodeLink(n2)}`;
   return `<span title="${esc(funderTitle(funder).trim())}">${nodeLink(funder)} → ${nodeLink(funder === n1 ? n2 : n1)}</span>`;
 }
+// A splice waiting for its announcement: the old channel looks closed, the new one isn't in the graph yet.
+const txLink = (id) => `<a class="mono" href="${MEMPOOL}/tx/${esc(id)}" rel="noopener">${esc(String(id).slice(0, 8))}…</a>`;
+const pendingTx = (x) => t(x.confs ? 'sp.pending.tx' : 'sp.pending.unconf', { tx: txLink(x.spent_by), n: nf(x.confs || 0) });
+function pendingRow(x) {
+  return `<li><time title="${esc(dateStr(x.t, true))}">${esc(x.t ? ago(x.t) : '–')}</time><span>${splicePair(x.n1, x.n2)} <span class="ktag k-splice k-pending" title="${esc(t('sp.pending.title', { w: x.window }))}">${esc(t('sp.pending'))}${x.delta != null ? ` ${esc(signedCap(x.delta))}` : ''}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.id)}" data-link>${esc(x.short_id)}</a> · ${cap(x.capacity)}${x.new_capacity != null ? ` → <span ${capTitle(x.new_capacity)}>${cap(x.new_capacity)}</span>` : ''} · ${pendingTx(x)}</span></li>`;
+}
 function spliceTag(c) {
   const p = lastSplice(c);
   if (!p) return '';
@@ -88,7 +94,7 @@ function spliceTag(c) {
 
 // ---------- data ----------
 let graph = null; let graphAt = 0; let dir = null; let hist = null;
-const idx = { node: new Map(), ch: new Map(), chBySid: new Map(), chOf: new Map(), spliceNext: {} };
+const idx = { node: new Map(), ch: new Map(), chBySid: new Map(), chOf: new Map(), spliceNext: {}, splicePending: {} };
 
 async function getJSON(url) {
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -107,6 +113,7 @@ async function loadGraph(force = false) {
     idx.chOf.get(c.n1)?.push(c); idx.chOf.get(c.n2)?.push(c);
   }
   idx.spliceNext = g.splice_next || {};
+  idx.splicePending = Object.fromEntries((g.splice_pending || []).map((x) => [String(x.id), x]));
   footStatus();
   return g;
 }
@@ -629,7 +636,7 @@ async function pageChannel(id) {
       <dt>${t('ch.updated')}</dt><dd>${dateStr(p.updated, true)} <span class="dim">(${esc(ago(p.updated))})</span></dd></dl>` : '<p class="mute">–</p>'}</div>`;
   $app.innerHTML = `<h1>${t('ch.title', { id: `<span class="mono">${esc(c.short_id)}</span>` })}</h1>
     <p>${peerCell(c.n1)} ⇄ ${peerCell(c.n2)}</p>
-    ${idx.spliceNext[c.id] ? `<p class="note">${t('sp.closed', { link: `<a class="mono" href="/channel/${esc(idx.spliceNext[c.id].id)}" data-link>${esc(idx.spliceNext[c.id].short_id)}</a>` })}</p>` : c.closed ? `<p class="note">${t('act.gone')}</p>` : ''}
+    ${idx.spliceNext[c.id] ? `<p class="note">${t('sp.closed', { link: `<a class="mono" href="/channel/${esc(idx.spliceNext[c.id].id)}" data-link>${esc(idx.spliceNext[c.id].short_id)}</a>` })}</p>` : idx.splicePending[c.id] ? `<p class="note">${t('sp.pending.note', { tx: txLink(idx.splicePending[c.id].spent_by), n: nf(idx.splicePending[c.id].confs || 0) })}</p>` : c.closed ? `<p class="note">${t('act.gone')}</p>` : ''}
     <div class="grid stats">
       <div class="stat"><div class="k">${t('ch.capacity')}</div><div class="v" ${capTitle(c.capacity)}>${cap(c.capacity)}</div><div class="s">${esc(sats(c.capacity))}</div></div>
       <div class="stat"><div class="k">${t('ch.block')}</div><div class="v"><a href="${MEMPOOL}/block/${blockOf(c.short_id)}" rel="noopener">${nf(blockOf(c.short_id))}</a></div><div class="s">${t(c.splices ? 'sp.last' : 'ch.opened')} ${esc(ago(c.created))}</div></div>
@@ -691,7 +698,7 @@ async function pageActivity() {
     <div class="grid act4">
       <div class="card"><h2>${t('top.newch')}</h2><ul class="feed">${newCh.map((c) => `<li><time title="${esc(dateStr(c.created, true))}">${esc(ago(c.created))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span></span></li>`).join('')}</ul></div>
       <div class="card"><h2>${t('cl.recent')}</h2>${g.closed_log?.length ? `<ul class="feed">${g.closed_log.slice(0, 40).map((c) => `<li><time title="${esc(dateStr(c.closed_at, true))}">${esc(ago(c.closed_at))}</time><span>${nodeLink(c.n1)} ⇄ ${nodeLink(c.n2)}</span><span class="small"><a class="mono" href="/channel/${esc(c.id)}" data-link>${esc(c.short_id)}</a> · <span ${capTitle(c.capacity)}>${cap(c.capacity)}</span> · ${esc(t('cl.lived', { d: span(c.closed_at - c.created) }))}</span></li>`).join('')}</ul>` : `<p class="mute">–</p>`}</div>
-      <div class="card"><h2>${t('sp.recent')}</h2>${g.splice_log?.length ? `<ul class="feed">${g.splice_log.slice(0, 40).map((x) => `<li><time title="${esc(dateStr(x.t, true))}">${esc(ago(x.t))}</time><span>${splicePair(x.n1, x.n2, x.funder)} <span class="ktag k-splice">${esc(t(x.delta >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.delta))}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.live)}" data-link>${esc(x.to.short_id)}</a> · ${cap(x.from.capacity)} → <span ${capTitle(x.to.capacity)}>${cap(x.to.capacity)}</span></span></li>`).join('')}</ul><p class="small dim">${t('sp.funder.note')}</p>` : `<p class="mute">–</p>`}</div>
+      <div class="card"><h2>${t('sp.recent')}</h2>${g.splice_log?.length || g.splice_pending?.length ? `<ul class="feed">${(g.splice_pending || []).map(pendingRow).join('')}${(g.splice_log || []).slice(0, 40).map((x) => `<li><time title="${esc(dateStr(x.t, true))}">${esc(ago(x.t))}</time><span>${splicePair(x.n1, x.n2, x.funder)} <span class="ktag k-splice">${esc(t(x.delta >= 0 ? 'sp.in' : 'sp.out'))} ${esc(signedCap(x.delta))}</span></span><span class="small"><a class="mono" href="/channel/${esc(x.live)}" data-link>${esc(x.to.short_id)}</a> · ${cap(x.from.capacity)} → <span ${capTitle(x.to.capacity)}>${cap(x.to.capacity)}</span></span></li>`).join('')}</ul><p class="small dim">${t('sp.funder.note')}</p>` : `<p class="mute">–</p>`}</div>
       <div class="card"><h2>${t('top.changes')}</h2>${feedList(realFeeChanges(h.changes).slice(0, 150))}</div>
     </div>`;
 }

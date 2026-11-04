@@ -1,0 +1,1 @@
+{"txid":"71788d15cd2e577c378593b06c3a33edf84c27493a7f9663c894bfff93b224d5","locktime":0,"vin":[{"txid":"b92f29d44321773f375cb47c3c6a0fee3ab43463377b3d87947bb1de41eebc45","vout":0,"sequence":4294967295}],"vout":[{"scriptpubkey_type":"v1_p2tr","value":238398},{"scriptpubkey_type":"v1_p2tr","value":761406}],"status":{"block_height":979305}}
