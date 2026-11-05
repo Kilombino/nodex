@@ -11,10 +11,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { probeNode } from './lnprobe.mjs';
+import { towersFromDirectory, probeTowers } from './towers.mjs';
 
 const DATA_DIR = process.env.DATA_DIR || new URL('../data', import.meta.url).pathname;
 const KEEP_DAYS = 90, RECENT = 144, CONCURRENCY = 8;
 const OPTS = { torTimeout: 60000, clearTimeout: 15000 };
+const DIRECTORY_FILE = process.env.DIRECTORY_FILE || new URL('../../mempool-deploy/lightning-directory/lightning-directory.json', import.meta.url).pathname;
 
 const graph = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'graph.json'), 'utf8'));
 const file = path.join(DATA_DIR, 'uptime.json');
@@ -72,3 +74,18 @@ db.generated = now;
 fs.writeFileSync(file + '.tmp', JSON.stringify(db));
 fs.renameSync(file + '.tmp', file);
 console.log(`probed ${results.size}, up ${up}, no tick ${skipped}, clearnet unavailable (tunnel) ${unavailable}`);
+
+// Watchtowers listed on Nodex (see towers.mjs). Separate file, and a failure here never touches
+// the node uptime written above.
+try {
+  const towers = towersFromDirectory(JSON.parse(fs.readFileSync(DIRECTORY_FILE, 'utf8')));
+  const tfile = path.join(DATA_DIR, 'watchtowers.json');
+  let prev = {};
+  try { prev = JSON.parse(fs.readFileSync(tfile, 'utf8')).towers || {}; } catch { /* first run */ }
+  const res = await probeTowers(towers, prev, OPTS);
+  fs.writeFileSync(tfile + '.tmp', JSON.stringify({ generated: Math.floor(Date.now() / 1000), towers: res }));
+  fs.renameSync(tfile + '.tmp', tfile);
+  console.log(`watchtowers: ${towers.length}, answering ${Object.values(res).filter((x) => x.ok).length}`);
+} catch (e) {
+  console.log('watchtowers: skipped:', e.message);
+}

@@ -117,10 +117,14 @@ async function loadGraph(force = false) {
   footStatus();
   return g;
 }
-let dirBust = '';
+let dirBust = ''; let dirTowers = [];
 async function loadDir() {
   if (dir) return dir;
-  try { dir = (await getJSON(`/resources/lightning-directory.json${dirBust}`)).nodes || {}; } catch { dir = {}; }
+  try {
+    const j = await getJSON(`/resources/lightning-directory.json${dirBust}`);
+    dir = j.nodes || {};
+    dirTowers = Array.isArray(j.watchtowers) ? j.watchtowers : [];
+  } catch { dir = {}; dirTowers = []; }
   return dir;
 }
 // After editing a card here: read the file again, past any cache.
@@ -139,6 +143,39 @@ async function loadUptime() {
   return uptime;
 }
 const api = (p) => getJSON(`/api/v1/lightning${p}`);
+
+// ---------- watchtowers ----------
+// Public altruist towers: the hand-kept `watchtowers` list of the directory file, then the
+// `watchtower` field of operator cards. ln-directory validates what operators send; this checks
+// again (pubkey@v3-onion|name|IPv4|[IPv6]:port) and drops anything else, and everything is escaped.
+const TOWER_RE = /^(0[23][0-9a-f]{64})@([a-z2-7]{56}\.onion|[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?|\[[0-9a-f:.]{2,45}\]):([1-9][0-9]{0,4})$/;
+function towerList() {
+  const out = []; const seen = new Set();
+  const add = (uri, operator, node) => {
+    const u = typeof uri === 'string' ? uri.trim().toLowerCase() : '';
+    const m = u.length <= 200 && TOWER_RE.exec(u);
+    if (!m || Number(m[3]) > 65535 || seen.has(u)) return;
+    seen.add(u);
+    out.push({ uri: u, pk: m[1], host: m[2], operator: typeof operator === 'string' ? operator.slice(0, 40) : '', node: /^0[23][0-9a-f]{64}$/.test(node || '') ? node : null });
+  };
+  for (const w of dirTowers) if (w && typeof w === 'object') add(w.uri, w.operator, w.node);
+  for (const [pk, e] of Object.entries(dir || {})) if (e?.watchtower) add(e.watchtower, e.name || idx.node.get(pk)?.alias, pk);
+  return out;
+}
+let towerSt = null;
+async function loadTowerStatus() {
+  if (towerSt && Date.now() - towerSt._at < 120000) return towerSt;
+  try { towerSt = await getJSON('/data/watchtowers.json'); } catch { towerSt = { towers: {} }; }
+  towerSt._at = Date.now();
+  return towerSt;
+}
+// [css class, label, title] for a tower's last probe.
+function towerState(x) {
+  if (!x || x.ok == null) return ['none', t('wt.st.none'), t('wt.st.none.t')];
+  if (x.ok && x.hs) return ['ok', t('wt.st.hs'), t('wt.st.hs.t')];
+  if (x.ok) return ['warn', t('wt.st.tcp'), t('wt.st.tcp.t')];
+  return ['bad', t('wt.st.down'), reasonText(x.reason)];
+}
 
 // Uptime card: share of probes (every 10 min) in which the node accepted a connection.
 function uptimeCard(u, n) {
@@ -495,6 +532,7 @@ function opCardBody(e) {
   if (C.email) rows.push(['Email', link(`mailto:${C.email}`, C.email)]);
   if (C.discord) rows.push(['Discord', /^https:\/\//.test(C.discord) ? link(C.discord, C.discord) : `<span>${esc(C.discord)}</span> ${copyBtn(C.discord)}`]);
   if (C.simplex) rows.push(['SimpleX', /^https:\/\//.test(C.simplex) ? link(C.simplex, 'SimpleX') : `${copyBtn(C.simplex)}`]);
+  if (typeof e.watchtower === 'string' && TOWER_RE.test(e.watchtower)) rows.push([t('node.op.tower'), `<a href="/watchtowers" data-link class="mono small" title="${esc(e.watchtower)}">${esc(e.watchtower.slice(0, 8))}…@${esc(e.watchtower.split('@')[1].slice(0, 12))}…</a> ${copyBtn(e.watchtower, t('wt.copy'))}`]);
   return `${e.name ? `<div class="name">${esc(e.name)}</div>` : ''}
     ${e.description ? `<p class="l2l-text" style="margin:6px 0">${esc(e.description)}</p>` : ''}
     ${e.tags?.length ? `<div class="tags">${e.tags.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
@@ -703,6 +741,35 @@ async function pageActivity() {
     </div>`;
 }
 
+async function pageTowers() {
+  setNav('watchtowers'); setTitle(t('wt.title'));
+  await Promise.all([loadGraph(), loadDir()]);
+  const st = await loadTowerStatus();
+  const rank = { ok: 0, warn: 1, none: 2, bad: 3 };
+  const list = towerList().map((w) => ({ ...w, st: st.towers?.[w.uri] }))
+    .sort((a, b) => rank[towerState(a.st)[0]] - rank[towerState(b.st)[0]] || a.operator.localeCompare(b.operator, loc(), { sensitivity: 'base' }));
+  const row = (w) => {
+    const [cls, label, title] = towerState(w.st);
+    const r = w.st?.recent;
+    const share = r ? [...r].filter((c) => c === '1').length / r.length : null;
+    const when = w.st?.last_try ? ` · ${t('wt.checked', { ago: ago(w.st.last_try) })}` : '';
+    return `<div class="card wt">
+      <div class="wt-h"><span class="name">${esc(w.operator || alias(w.node || w.pk))}</span>
+        <span class="wt-st ${cls}" title="${esc(title)}"><span class="wdot"></span>${esc(label)}</span></div>
+      <div class="small"><span class="dim">${t('wt.node')}:</span> ${w.node ? `<span class="peer"><span class="dot" style="background:${color(w.node)}"></span>${nodeLink(w.node)}</span>` : `<span class="dim">${t('wt.nonode')}</span>`}</div>
+      <div class="addr"><span class="badge ${w.host.endsWith('.onion') ? 'tor' : 'net'}">${w.host.endsWith('.onion') ? 'Tor' : w.host.startsWith('[') ? 'IPv6' : /^[0-9.]+$/.test(w.host) ? 'IPv4' : 'DNS'}</span><code class="wturi">${esc(w.uri)}</code>${copyBtn(w.uri, t('wt.copy'))}</div>
+      <div class="small dim">${share != null ? esc(t('wt.24h', { v: pct(share) })) : ''}${esc(when)}</div>
+    </div>`;
+  };
+  $app.innerHTML = `<h1>${t('wt.title')}</h1><p class="mute">${t('wt.sub')}</p>
+    ${list.length ? `<div class="grid cols2">${list.map(row).join('')}</div>` : `<p class="mute">${t('wt.none')}</p>`}
+    <section class="section card wt-how">
+      <p>${t('wt.howto', { cmd: `<code>lncli wtclient add &lt;${esc(t('wt.uri'))}&gt;</code>`, conf: '<code>wtclient.active=true</code>' })}</p>
+      <p class="small dim">${t('wt.note')}</p>
+      <p class="small">${t('wt.add')} <a href="/card" data-link>${t('wt.add.go')}</a></p>
+    </section>`;
+}
+
 async function pageSearch(q) {
   setNav(''); setTitle(q);
   q = String(q || '').trim();
@@ -801,6 +868,7 @@ async function route() {
     else if ((m = p.match(/^\/l2l(?:\/(active|done|mine))?$/))) await L2.pageL2L(m[1]);
     else if ((m = p.match(/^\/l2l\/ring\/([0-9a-f]{10})$/))) await L2.pageRing(m[1]);
     else if (p === '/card') await L2.pageCard();
+    else if (p === '/watchtowers') await pageTowers();
     else if (p === '/search') await pageSearch(qs.get('q'));
     else { $app.innerHTML = '<h1>404</h1>'; }
   } catch (e) {

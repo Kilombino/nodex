@@ -421,3 +421,17 @@ body:has(.act4) .wrap { max-width: 1720px; }
 .reachline { font-size: .85rem; margin-bottom: 2px; }
 .reachline code { font-family: var(--mono); font-size: .78rem; word-break: break-all; font-weight: 400; }
 .reach p { margin: 4px 0 0; }
+
+/* watchtowers */
+.wt .wt-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.wt .name { font-weight: 700; }
+.wt .addr { margin-top: 8px; }
+.wt code.wturi { font-size: .78rem; }
+.wt-st { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--mute); white-space: nowrap; }
+.wt-st .wdot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; }
+.wt-st.ok { color: var(--acc); } .wt-st.ok .wdot { background: var(--acc); box-shadow: 0 0 8px var(--acc); }
+.wt-st.warn { color: var(--acc2); } .wt-st.warn .wdot { background: var(--acc2); }
+.wt-st.bad { color: var(--bad); } .wt-st.bad .wdot { background: var(--bad); }
+.wt-how code { font-family: var(--mono); font-size: .85rem; overflow-wrap: anywhere; }
+.wt .peer { display: inline-flex; vertical-align: middle; }
+@media (max-width: 760px) { .nav { flex-wrap: wrap; } }

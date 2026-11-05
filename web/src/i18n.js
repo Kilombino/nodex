@@ -324,3 +324,35 @@ Object.assign(DICT.en, {
   'l2l.err.full': 'The ring is already full.', 'l2l.err.not_open': 'This ring no longer takes members.', 'l2l.err.locked': 'The ring is full: you can no longer leave or cancel.',
   'l2l.err.bot_off': 'Telegram alerts are not available yet.',
 });
+
+// Watchtowers. The chain is called Bitcoin / BTC.
+Object.assign(DICT.es, {
+  'nav.towers': 'Watchtowers',
+  'wt.title': 'Watchtowers', 'wt.sub': 'Watchtowers altruistas públicas de la red Lightning de BTC: vigilan tus canales cuando tu nodo no puede.',
+  'wt.node': 'Nodo', 'wt.nonode': 'sin nodo enlazado', 'wt.copy': 'Copiar URI', 'wt.none': 'Todavía no hay ninguna watchtower en la lista.',
+  'wt.howto': 'Añádela con: {cmd} ({conf} en lnd.conf, hace falta Tor). Solo guarda datos de justicia cifrados y actúa si alguien intenta engañarte con un estado antiguo del canal. Usa más de una torre.',
+  'wt.uri': 'esa uri',
+  'wt.add': '¿Tienes una watchtower altruista pública? Añade su URI a la ficha de operador de tu nodo y saldrá aquí.', 'wt.add.go': 'Editar tu ficha →',
+  'wt.st.hs': 'responde', 'wt.st.hs.t': 'Handshake Lightning correcto con la clave de la torre',
+  'wt.st.tcp': 'puerto abierto', 'wt.st.tcp.t': 'El puerto acepta conexiones, pero el handshake con la clave de la torre no salió bien',
+  'wt.st.down': 'no responde', 'wt.st.none': 'sin comprobar', 'wt.st.none.t': 'Aún no se ha podido comprobar',
+  'wt.checked': 'comprobado {ago}', 'wt.24h': '{v} en 24 h',
+  'wt.note': 'Cada 10 minutos Nodex intenta conectar con cada torre por Tor (o por una VPN, nunca desde la conexión de casa; nunca direcciones privadas) y hace el handshake Lightning con su clave.',
+  'card.f.watchtower': 'Watchtower', 'card.f.watchtower.h': 'Opcional: URI de tu watchtower altruista pública, pubkey@host:puerto (.onion v3, nombre o IP públicos). Sale en la pestaña Watchtowers.',
+  'node.op.tower': 'Watchtower',
+});
+Object.assign(DICT.en, {
+  'nav.towers': 'Watchtowers',
+  'wt.title': 'Watchtowers', 'wt.sub': 'Public altruist watchtowers of the BTC Lightning network: they watch your channels when your node cannot.',
+  'wt.node': 'Node', 'wt.nonode': 'no linked node', 'wt.copy': 'Copy URI', 'wt.none': 'No watchtowers listed yet.',
+  'wt.howto': 'Add it with: {cmd} ({conf} in lnd.conf, Tor needed). It only holds encrypted justice data and acts if someone tries to cheat you with an old channel state. Use more than one tower.',
+  'wt.uri': 'that uri',
+  'wt.add': 'Run a public altruist watchtower? Add its URI to your node\'s operator card and it shows up here.', 'wt.add.go': 'Edit your card →',
+  'wt.st.hs': 'answering', 'wt.st.hs.t': 'Lightning handshake with the tower\'s key succeeded',
+  'wt.st.tcp': 'port open', 'wt.st.tcp.t': 'The port accepts connections, but the handshake with the tower\'s key did not succeed',
+  'wt.st.down': 'not answering', 'wt.st.none': 'not checked', 'wt.st.none.t': 'Not checked yet',
+  'wt.checked': 'checked {ago}', 'wt.24h': '{v} in 24 h',
+  'wt.note': 'Every 10 minutes Nodex tries to connect to each tower through Tor (or a VPN, never from the home line; never private addresses) and does the Lightning handshake with its key.',
+  'card.f.watchtower': 'Watchtower', 'card.f.watchtower.h': 'Optional: URI of your public altruist watchtower, pubkey@host:port (v3 .onion, public name or IP). Listed in the Watchtowers tab.',
+  'node.op.tower': 'Watchtower',
+});

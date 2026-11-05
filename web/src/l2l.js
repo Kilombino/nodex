@@ -308,6 +308,7 @@ export function initL2L(h) {
         ${field('tags', input('tags', (e.tags || []).join(', '), 'maxlength="140"'))}
         ${field('min_channel_size', `<input type="number" name="min_channel_size" min="0" step="1" value="${esc(e.min_channel_size ?? '')}">`)}
         ${field('description', `<textarea name="description" rows="4" maxlength="500">${esc(e.description || '')}</textarea>`, true)}
+        ${field('watchtower', input('watchtower', e.watchtower, 'maxlength="200" spellcheck="false" autocapitalize="off" class="mono" placeholder="02…@….onion:9911"'), true)}
         <div class="wide"><h3>${t('card.contacts')}</h3><p class="small mute">${t('card.contacts.s')}</p></div>
         ${CONTACTS.map((k) => field(k, input(`c.${k}`, c[k], `maxlength="${k === 'simplex' ? 1000 : 200}"`))).join('')}
         <div class="wide l2l-row"><button class="btn" type="submit" id="card-save">${t('card.save')}</button>
@@ -325,6 +326,7 @@ export function initL2L(h) {
       const tags = v('tags').split(',').map((x) => x.trim()).filter(Boolean);
       if (tags.length) entry.tags = tags;
       if (v('min_channel_size')) entry.min_channel_size = Number(v('min_channel_size'));
+      entry.watchtower = v('watchtower'); // always sent: empty removes it
       for (const k of CONTACTS) if (v(`c.${k}`)) contacts[k] = v(`c.${k}`);
       if (Object.keys(contacts).length) entry.contacts = contacts;
       try {
